@@ -1,0 +1,82 @@
+{
+  "bundle": "Explicit train/test: synthetic_train.csv, synthetic_test.csv",
+  "positive_labels": [
+    "Depression"
+  ],
+  "best_model": "logistic_regression",
+  "val_metrics_per_model": {
+    "logistic_regression": {
+      "f1": 1.0,
+      "f2": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "roc_auc": 1.0,
+      "pr_auc": 1.0
+    },
+    "linear_svc": {
+      "f1": 1.0,
+      "f2": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "roc_auc": 1.0,
+      "pr_auc": 1.0
+    },
+    "random_forest": {
+      "f1": 1.0,
+      "f2": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "roc_auc": 1.0,
+      "pr_auc": 1.0
+    },
+    "xgboost": {
+      "f1": 1.0,
+      "f2": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "roc_auc": 1.0,
+      "pr_auc": 1.0
+    }
+  },
+  "test_metrics": {
+    "f1": 0.918918918918919,
+    "f2": 0.8762886597938144,
+    "precision": 1.0,
+    "recall": 0.85,
+    "roc_auc": 1.0,
+    "pr_auc": 1.0
+  },
+  "classification_report": {
+    "Normal": {
+      "precision": 0.8695652173913043,
+      "recall": 1.0,
+      "f1-score": 0.9302325581395349,
+      "support": 20.0
+    },
+    "Depression": {
+      "precision": 1.0,
+      "recall": 0.85,
+      "f1-score": 0.918918918918919,
+      "support": 20.0
+    },
+    "accuracy": 0.925,
+    "macro avg": {
+      "precision": 0.9347826086956521,
+      "recall": 0.925,
+      "f1-score": 0.9245757385292269,
+      "support": 40.0
+    },
+    "weighted avg": {
+      "precision": 0.9347826086956521,
+      "recall": 0.925,
+      "f1-score": 0.9245757385292268,
+      "support": 40.0
+    }
+  },
+  "risk_thresholds": {
+    "low": 0.007846778266668308,
+    "high": 0.9734318918048879,
+    "operating_threshold": 0.9931376360373199,
+    "calibrated_on": "validation_split"
+  }
+}
