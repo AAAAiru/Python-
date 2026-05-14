@@ -1,0 +1,6 @@
+- Install requirements: pip install -r requirements.txt
+- Train a model (and save weights to tmp/): python reddit.py
+- Configuration is handled using the [sacred library](https://github.com/IDSIA/sacred)
+  - View config options: python reddit.py print_config
+  - Override some of the default options: python reddit.py with max_length=50 max_posts=100
+- Test a model: python test.py <path/to/weight/file>

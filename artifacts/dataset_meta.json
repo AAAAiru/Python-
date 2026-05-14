@@ -1,3 +1,6 @@
 {
-  "source_note": "Explicit train/test: synthetic_train.csv, synthetic_test.csv"
+  "source_note": "Single file split: depression_dataset_reddit_cleaned.csv (depression_dataset_reddit_cleaned)",
+  "label_disclaimer": "Labels reflect dataset authors / heuristics (e.g. Reddit self-report or Kaggle crowdsourcing), not clinical diagnosis. Do not use outputs for medical decisions or crisis triage.",
+  "best_model": "random_forest",
+  "probability_calibration": "platt_validation"
 }

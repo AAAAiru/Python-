@@ -1,4 +1,4 @@
-"""Feature builders: TF-IDF, simple stats, VADER sentiment."""
+"""Feature builders: TF-IDF, simple stats, VADER sentiment, EMNLP'17 lexicon cues."""
 
 from __future__ import annotations
 
@@ -12,9 +12,20 @@ from sklearn.preprocessing import StandardScaler
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 from . import config
-
+from .emnlp17_signals import extract_emnlp17_features
 
 _vader = SentimentIntensityAnalyzer()
+
+# Order must be stable between train and inference (hstack columns).
+STAT_FEATURE_ORDER: tuple[str, ...] = (
+    "char_len",
+    "word_count",
+    "avg_word_len",
+    "sentiment_compound",
+    "emnlp_mh_hits",
+    "emnlp_pos_diag",
+    "emnlp_neg_diag",
+)
 
 
 def compound_sentiment(text: str) -> float:
@@ -28,11 +39,15 @@ def extract_stat_features(text: str) -> dict[str, float]:
     char_len = float(len(text))
     word_count = float(len(words))
     avg_word_len = float(np.mean([len(w) for w in words])) if words else 0.0
+    emnlp = extract_emnlp17_features(text)
     return {
         "char_len": char_len,
         "word_count": word_count,
         "avg_word_len": avg_word_len,
         "sentiment_compound": compound_sentiment(text),
+        "emnlp_mh_hits": emnlp["emnlp_mh_hits"],
+        "emnlp_pos_diag": emnlp["emnlp_pos_diag"],
+        "emnlp_neg_diag": emnlp["emnlp_neg_diag"],
     }
 
 
@@ -49,7 +64,7 @@ def fit_tfidf(corpus: Iterable[str]) -> TfidfVectorizer:
 
 
 def _stats_matrix(texts: Iterable[str]) -> csr_matrix:
-    rows = [[*extract_stat_features(t).values()] for t in texts]
+    rows = [[extract_stat_features(t)[k] for k in STAT_FEATURE_ORDER] for t in texts]
     arr = np.asarray(rows, dtype=float)
     return csr_matrix(arr)
 

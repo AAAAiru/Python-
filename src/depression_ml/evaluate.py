@@ -81,6 +81,36 @@ def plot_pr(y_true, y_score, out_path: Path) -> None:
     plt.close(fig)
 
 
+def plot_calibration_reliability(
+    y_true,
+    y_score,
+    out_path: Path,
+    title: str = "Reliability (test set)",
+) -> None:
+    """Fraction of positives vs mean predicted score (uniform bins)."""
+    from sklearn.calibration import calibration_curve
+
+    y_true = np.asarray(y_true)
+    y_score = np.asarray(y_score, dtype=float)
+    n_bins = int(min(10, max(3, len(y_true) // 80)))
+    try:
+        prob_true, prob_pred = calibration_curve(y_true, y_score, n_bins=n_bins, strategy="uniform")
+    except ValueError:
+        return
+    fig, ax = plt.subplots(figsize=(5, 4))
+    ax.plot(prob_pred, prob_true, marker="o", label="Model")
+    ax.plot([0, 1], [0, 1], "k--", lw=1, label="Ideal")
+    ax.set_xlabel("Mean predicted probability")
+    ax.set_ylabel("Fraction of positives")
+    ax.set_title(title)
+    ax.legend(loc="lower right")
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=160)
+    plt.close(fig)
+
+
 def plot_model_bar(results: dict[str, dict[str, float]], out_path: Path, metric: str = "f1") -> None:
     names = list(results.keys())
     vals = [results[n][metric] for n in names]

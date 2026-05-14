@@ -1,1 +1,1 @@
-logistic_regression
+random_forest

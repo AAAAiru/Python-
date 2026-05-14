@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Tuple
+from typing import Any, Tuple
 
 import joblib
 import numpy as np
 
 from .features import vectorize_single
 from .preprocess import preprocess_text_en
+from .probability_calibrate import apply_platt, load_platt_optional
 
 
 def load_risk_thresholds(artifacts_dir: Path) -> dict[str, float]:
@@ -20,14 +21,24 @@ def load_risk_thresholds(artifacts_dir: Path) -> dict[str, float]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def depression_probability(text: str, model, vectorizer, scaler) -> float:
+def depression_probability(
+    text: str,
+    model: Any,
+    vectorizer: Any,
+    scaler: Any,
+    platt: Any | None = None,
+) -> float:
     clean = preprocess_text_en(text)
     Xs = vectorize_single(vectorizer, scaler, clean)
     if hasattr(model, "predict_proba"):
-        return float(model.predict_proba(Xs)[0, 1])
-    scores = model.decision_function(Xs)
-    s = float(scores[0])
-    return float(1.0 / (1.0 + np.exp(-s)))
+        p = float(model.predict_proba(Xs)[0, 1])
+    else:
+        scores = model.decision_function(Xs)
+        s = float(scores[0])
+        p = float(1.0 / (1.0 + np.exp(-s)))
+    if platt is not None:
+        p = apply_platt(platt, p)
+    return p
 
 
 def risk_tier(prob: float, thresholds: dict[str, float]) -> str:
@@ -44,11 +55,24 @@ def load_artifacts(artifacts_dir: Path):
     vectorizer = joblib.load(artifacts_dir / "tfidf.pkl")
     scaler = joblib.load(artifacts_dir / "scaler.pkl")
     thresholds = load_risk_thresholds(artifacts_dir)
-    return model, vectorizer, scaler, thresholds
+    platt = load_platt_optional(artifacts_dir)
+    return model, vectorizer, scaler, thresholds, platt
 
 
 def assess(text: str, artifacts_dir: Path) -> Tuple[str, float, dict[str, float]]:
-    model, vectorizer, scaler, thr = load_artifacts(artifacts_dir)
-    p = depression_probability(text, model, vectorizer, scaler)
+    model, vectorizer, scaler, thr, platt = load_artifacts(artifacts_dir)
+    p = depression_probability(text, model, vectorizer, scaler, platt)
     tier = risk_tier(p, thr)
     return tier, p, thr
+
+
+def assess_with_lexicon(text: str, artifacts_dir: Path) -> Tuple[str, float, dict[str, float], dict[str, float]]:
+    """Same as ``assess`` plus EMNLP'17 lexicon hit counts on preprocessed text."""
+    from .emnlp17_signals import extract_emnlp17_features
+
+    model, vectorizer, scaler, thr, platt = load_artifacts(artifacts_dir)
+    clean = preprocess_text_en(text)
+    lex = extract_emnlp17_features(clean)
+    p = depression_probability(text, model, vectorizer, scaler, platt)
+    tier = risk_tier(p, thr)
+    return tier, p, thr, lex

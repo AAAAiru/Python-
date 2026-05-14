@@ -12,7 +12,7 @@ from .config import DATA_DIR, REDDIT_BINARY_FILTER
 
 
 TEXT_CANDIDATES = ("text", "statement", "content", "clean_text", "tweet", "post")
-LABEL_CANDIDATES = ("status", "label", "class", "target", "mental_health")
+LABEL_CANDIDATES = ("status", "label", "class", "target", "mental_health", "is_depression")
 
 
 @dataclass
@@ -105,6 +105,13 @@ def auto_load(data_dir: Path | None = None) -> DatasetBundle:
         )
 
     names = {p.name.lower(): p for p in files}
+
+    # Prefer cleaned Reddit depression CSV when present (over synthetic placeholders).
+    for key in ("depression_dataset_reddit_cleaned.csv",):
+        if key.lower() in names:
+            bundle = load_single_file_split(names[key.lower()], test_size=0.2, random_state=42)
+            bundle.source_note += " (depression_dataset_reddit_cleaned)"
+            return bundle
 
     pairs = [
         ("mental_health_combined_train.csv", "mental_health_combined_test.csv"),

@@ -23,6 +23,7 @@ from .evaluate import (
     classification_report_dict,
     dump_json,
     evaluate_binary,
+    plot_calibration_reliability,
     plot_confusion,
     plot_model_bar,
     plot_pr,
@@ -31,10 +32,17 @@ from .evaluate import (
 from .features import fit_tfidf, vectorize_text_stats
 from .io_data import DatasetBundle, auto_load
 from .preprocess import preprocess_text_en
+from . import probability_calibrate as pcal
 
 
 def _binary_labels(df: pd.DataFrame, positive_labels: set[str]) -> np.ndarray:
-    return df["label_raw"].isin(positive_labels).astype(int).to_numpy()
+    col = df["label_raw"]
+    num = pd.to_numeric(col, errors="coerce")
+    if num.notna().all():
+        u = np.unique(num.to_numpy(dtype=float))
+        if u.size <= 2 and np.all(np.isin(u, (0.0, 1.0))):
+            return (num.to_numpy(dtype=float) == 1.0).astype(int)
+    return col.isin(positive_labels).astype(int).to_numpy()
 
 
 def _maybe_subsample(tr: pd.DataFrame, y_tr: np.ndarray) -> tuple[pd.DataFrame, np.ndarray]:
@@ -136,7 +144,13 @@ def run_training(
 
         write_placeholder_dataset(data_dir)
         bundle = auto_load(data_dir)
-    dump_json({"source_note": bundle.source_note}, artifacts_dir / "dataset_meta.json")
+    dump_json(
+        {
+            "source_note": bundle.source_note,
+            "label_disclaimer": config.LABEL_DISCLAIMER,
+        },
+        artifacts_dir / "dataset_meta.json",
+    )
 
     train_df = bundle.train.copy()
     test_df = bundle.test.copy()
@@ -203,6 +217,21 @@ def run_training(
         p_va = (p_va - p_va.min()) / (p_va.max() - p_va.min() + 1e-9)
         p_te = (p_te - p_te.min()) / (p_te.max() - p_te.min() + 1e-9)
 
+    platt_path = artifacts_dir / "platt_calibrator.pkl"
+    platt_note = "none"
+    if getattr(config, "USE_PLATT_CALIBRATION", True):
+        platt_fit = pcal.fit_platt_calibrator(p_va, y_va)
+        if platt_fit is not None:
+            p_va_c = platt_fit.predict_proba(np.asarray(p_va, dtype=float).reshape(-1, 1))[:, 1]
+            p_te_c = platt_fit.predict_proba(np.asarray(p_te, dtype=float).reshape(-1, 1))[:, 1]
+            pcal.save_platt(platt_fit, artifacts_dir)
+            p_va, p_te = p_va_c, p_te_c
+            platt_note = "platt_validation"
+        else:
+            platt_path.unlink(missing_ok=True)
+    else:
+        platt_path.unlink(missing_ok=True)
+
     thr_f2 = best_threshold_fbeta(y_va, p_va, beta=2.0)
     pred_te = (p_te >= thr_f2).astype(int)
 
@@ -216,6 +245,7 @@ def run_training(
         "high": max(config.RISK_HIGH_DEFAULT, high),
         "operating_threshold": thr_f2,
         "calibrated_on": "validation_split",
+        "probability_calibration": platt_note,
     }
 
     joblib.dump(best_est, artifacts_dir / "depression_model.pkl")
@@ -225,6 +255,7 @@ def run_training(
     dump_json(
         {
             "bundle": bundle.source_note,
+            "label_disclaimer": config.LABEL_DISCLAIMER,
             "positive_labels": sorted(config.POSITIVE_LABELS),
             "best_model": best_name,
             "val_metrics_per_model": val_results,
@@ -239,8 +270,15 @@ def run_training(
     plot_confusion(y_test, pred_te, artifacts_dir / "confusion_matrix_test.png", title=f"Test confusion ({best_name})")
     plot_roc(y_test, p_te, artifacts_dir / "roc_test.png")
     plot_pr(y_test, p_te, artifacts_dir / "pr_test.png")
+    plot_calibration_reliability(y_test, p_te, artifacts_dir / "calibration_reliability_test.png")
     plot_model_bar(val_results, artifacts_dir / "model_comparison_val_f1.png", metric="f1")
     plot_model_bar(val_results, artifacts_dir / "model_comparison_val_f2.png", metric="f2")
+
+    meta_path = artifacts_dir / "dataset_meta.json"
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    meta["best_model"] = best_name
+    meta["probability_calibration"] = platt_note
+    dump_json(meta, meta_path)
 
     summary = {
         "best_model": best_name,

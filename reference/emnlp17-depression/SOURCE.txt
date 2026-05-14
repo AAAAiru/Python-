@@ -1,0 +1,6 @@
+Source: Georgetown-IR-Lab / emnlp17-depression
+Commit: 08b22820459f2d033bf0cc588c89076e18230210
+Archive: https://github.com/Georgetown-IR-Lab/emnlp17-depression/archive/08b22820459f2d033bf0cc588c89076e18230210.zip
+
+Full repository snapshot at the above commit (for local reference only).
+See subfolder README.md files and LICENSE.txt under user_selection/ for upstream terms.
