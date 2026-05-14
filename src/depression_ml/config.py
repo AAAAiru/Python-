@@ -32,3 +32,17 @@ RISK_HIGH_DEFAULT = 0.70
 
 # Reddit-only: keep only Depression vs Normal rows
 REDDIT_BINARY_FILTER = True
+
+# --- Inference UX (GUI / CLI) ---
+MIN_TEXT_CHARS = 12
+MIN_LATIN_LETTER_RATIO = 0.82  # see preprocess.looks_english
+GUI_LEXICON_PREVIEW = 5  # max phrases per category in the GUI
+
+# --- Post-training probability calibration (validation Platt) ---
+USE_PLATT_CALIBRATION = True
+
+# --- Ethics / documentation (written into artifacts/dataset_meta.json) ---
+LABEL_DISCLAIMER = (
+    "Labels reflect dataset authors / heuristics (e.g. Reddit self-report or Kaggle crowdsourcing), "
+    "not clinical diagnosis. Do not use outputs for medical decisions or crisis triage."
+)

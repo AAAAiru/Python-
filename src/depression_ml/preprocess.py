@@ -21,8 +21,12 @@ def preprocess_text_en(text: object) -> str:
     return s
 
 
-def looks_english(text: str, sample_chars: int = 200) -> bool:
+def looks_english(text: str, sample_chars: int = 200, min_ratio: float | None = None) -> bool:
     """Heuristic: Latin letters dominate the sample (robust to punctuation)."""
+    if min_ratio is None:
+        from . import config
+
+        min_ratio = float(getattr(config, "MIN_LATIN_LETTER_RATIO", 0.85))
     if not text:
         return True
     chunk = text[:sample_chars]
@@ -30,4 +34,4 @@ def looks_english(text: str, sample_chars: int = 200) -> bool:
     latin = sum(1 for c in chunk if "a" <= c.lower() <= "z")
     if letters == 0:
         return True
-    return (latin / letters) >= 0.85
+    return (latin / letters) >= min_ratio

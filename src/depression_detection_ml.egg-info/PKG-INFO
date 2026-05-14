@@ -2,12 +2,12 @@ Metadata-Version: 2.4
 Name: depression-detection-ml
 Version: 0.1.0
 Summary: Course project: English mental-health text depression screening (TF-IDF + classical ML + Tkinter GUI).
-Requires-Python: >=3.10
+Requires-Python: >=3.11
 Description-Content-Type: text/markdown
 Requires-Dist: pandas>=2.0.0
 Requires-Dist: numpy>=1.24.0
 Requires-Dist: scipy>=1.10.0
-Requires-Dist: scikit-learn>=1.3.0
+Requires-Dist: scikit-learn>=1.8.0
 Requires-Dist: matplotlib>=3.7.0
 Requires-Dist: seaborn>=0.13.0
 Requires-Dist: joblib>=1.3.0
@@ -19,7 +19,7 @@ Requires-Dist: ipykernel>=6.25.0
 
 # 抑郁症倾向识别（英文社交媒体文本）课程设计工程
 
-本项目使用 **Python 3.10+**，面向 Kaggle 英文心理健康文本数据，完成 **二分类：Depression vs 其他**（默认将 *Anxiety / Normal / Suicidal* 等均视为负类，可在 `src/depression_ml/config.py` 中调整 `POSITIVE_LABELS`）。
+本项目使用 **Python 3.11+**（推荐用仓库根目录 `.venv`，见下文），面向 Kaggle 英文心理健康文本数据，完成 **二分类：Depression vs 其他**（默认将 *Anxiety / Normal / Suicidal* 等均视为负类，可在 `src/depression_ml/config.py` 中调整 `POSITIVE_LABELS`）。
 
 > **重要声明**：仅供课程与科研教学演示，不能作为医学诊断或危机干预依据。涉及自伤风险时请引导用户联系当地急救或心理援助热线。
 
@@ -37,10 +37,14 @@ Requires-Dist: ipykernel>=6.25.0
 在项目根目录 `depression_detection_ml/` 下执行：
 
 ```bash
-python -m venv .venv
-.venv\Scripts\activate
+# macOS / Linux：用本机已安装的 Python 3.11+ 创建虚拟环境（示例为 python3.12）
+python3.12 -m venv .venv
+source .venv/bin/activate
+pip install -U pip
 pip install -e .
 ```
+
+Windows 将 `source .venv/bin/activate` 换为 `.venv\Scripts\activate`。
 
 或：
 

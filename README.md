@@ -1,6 +1,6 @@
 # 抑郁症倾向识别（英文社交媒体文本）课程设计工程
 
-本项目使用 **Python 3.10+**，面向 Kaggle 英文心理健康文本数据，完成 **二分类：Depression vs 其他**（默认将 *Anxiety / Normal / Suicidal* 等均视为负类，可在 `src/depression_ml/config.py` 中调整 `POSITIVE_LABELS`）。
+本项目使用 **Python 3.11+**（推荐用仓库根目录 `.venv`，见下文），面向 Kaggle 英文心理健康文本数据，完成 **二分类：Depression vs 其他**（默认将 *Anxiety / Normal / Suicidal* 等均视为负类，可在 `src/depression_ml/config.py` 中调整 `POSITIVE_LABELS`）。
 
 > **重要声明**：仅供课程与科研教学演示，不能作为医学诊断或危机干预依据。涉及自伤风险时请引导用户联系当地急救或心理援助热线。
 
@@ -15,13 +15,17 @@
 
 ## 1. 环境
 
-在项目根目录 `depression_detection_ml/` 下执行：
+在项目根目录下执行：
 
 ```bash
-python -m venv .venv
-.venv\Scripts\activate
+# macOS / Linux：用本机已安装的 Python 3.11+ 创建虚拟环境（示例为 python3.12）
+python3.12 -m venv .venv
+source .venv/bin/activate
+pip install -U pip
 pip install -e .
 ```
+
+Windows 将 `source .venv/bin/activate` 换为 `.venv\Scripts\activate`。
 
 或：
 
@@ -30,6 +34,10 @@ pip install -r requirements.txt
 ```
 
 并把 `src` 加入 `PYTHONPATH`（脚本已自动处理）。
+
+若使用 **python.org 安装的 Python 3.12**，首次 `pip install` 出现 `SSL: CERTIFICATE_VERIFY_FAILED`，请先运行一次 **「Install Certificates.command」**（在 `/Applications/Python 3.12/` 文件夹内），或临时使用：
+
+`pip install ... --trusted-host pypi.org --trusted-host files.pythonhosted.org`
 
 ## 2. 数据集（任选其一）
 
@@ -80,14 +88,32 @@ jupyter notebook notebooks/depression_detection.ipynb
 python scripts/run_gui.py
 ```
 
+界面会校验**最短字符数**与**是否主要为英文**；结果区除模型概率外，会展示 **EMNLP’17 `user_selection` 词典** 的命中摘要（解释用）。若训练阶段拟合了 **Platt 概率校准**，推理概率为校准后分数（见 `artifacts/platt_calibrator.pkl`）。
+
+### 5.1 批量推理（CSV）
+
+```bash
+python scripts/run_infer_csv.py --input data/depression_dataset_reddit_cleaned.csv --output artifacts/predictions_sample.csv
+```
+
+可用 `--text-column` 指定文本列；默认自动匹配 `clean_text` / `text` 等常见列名。
+
+### 5.2 单元测试
+
+```bash
+pip install -e ".[dev]"
+pytest
+```
+
 ## 6. 任务与模型
 
-- 预处理：英文小写、去 URL、非字母清洗（`preprocess.py`）。
-- 特征：`TF-IDF`（稀疏矩阵）+ 词长/词数等统计量 + **VADER** 情感复合分（`features.py`），`StandardScaler(with_mean=False)`。
+- 预处理：英文小写、去 URL、非字母清洗（`preprocess.py`）；可选 **拉丁字母占比** 启发式（`looks_english`，阈值见 `config.py`）。
+- 特征：`TF-IDF`（稀疏矩阵）+ 词长/词数等统计量 + **VADER** 情感复合分 + **EMNLP’17 参考词典** 命中特征（`emnlp17_signals.py` / `features.py`），`StandardScaler(with_mean=False)`。
 - 模型：逻辑回归、`LinearSVC`（`CalibratedClassifierCV` 概率）、随机森林、**XGBoost**（若安装失败则自动跳过）。
 - 大规模训练集：默认对 **训练子集** 做分层抽样至 `MAX_TRAIN_ROWS`（见 `config.py`），验证集与官方测试集仍全量用于评估，以控制笔记本/普通电脑的内存占用。
 - 不平衡：`RandomOverSampler` + 多数模型的 `class_weight`。
-- 验证集上按 **F2**（偏重召回）搜索分类阈值，并写入 `artifacts/risk_thresholds.json` 供 GUI 三档风险展示。
+- 验证集上按 **F2**（偏重召回）搜索分类阈值，并写入 `artifacts/risk_thresholds.json` 供 GUI 三档风险展示；可选在验证集上拟合 **Platt 校准**（`probability_calibrate.py`），并输出可靠性图 `artifacts/calibration_reliability_test.png`。
+- 数据说明与伦理提示会写入 `artifacts/dataset_meta.json` 的 `label_disclaimer` 字段。
 
 ## 7. 许可与伦理
 
