@@ -1,0 +1,18 @@
+{
+  "source_file": "depression_dataset_reddit_cleaned.csv",
+  "rows_source": 7731,
+  "rows_after_clean": 7413,
+  "rows_dropped": 318,
+  "min_chars": 20,
+  "splits": {
+    "train": 4744,
+    "val": 1186,
+    "test": 1483
+  },
+  "label_counts": {
+    "1": 3727,
+    "0": 3686
+  },
+  "built_at": "2026-05-18T06:44:35.478069+00:00",
+  "label_disclaimer": "Labels reflect dataset authors / heuristics (e.g. Reddit self-report or Kaggle crowdsourcing), not clinical diagnosis. Do not use outputs for medical decisions or crisis triage."
+}
