@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = PROJECT_ROOT / "data"
 ARTIFACTS_DIR = PROJECT_ROOT / "artifacts"
 
@@ -40,6 +40,17 @@ GUI_LEXICON_PREVIEW = 5  # max phrases per category in the GUI
 
 # --- Post-training probability calibration (validation Platt) ---
 USE_PLATT_CALIBRATION = True
+
+# --- EMNLP 2017 reference lexicon (local clone under reference/) ---
+EMNLP17_USER_SELECTION_DIR = PROJECT_ROOT / "reference" / "emnlp17-depression" / "user_selection"
+EMNLP17_UPSTREAM_URL = "https://github.com/Georgetown-IR-Lab/emnlp17-depression"
+EMNLP17_LEXICON_FILES = (
+    "mh_patterns.txt",
+    "mh_subreddits.txt",
+    "diagpatterns_positive.txt",
+    "diagpatterns_negative.txt",
+    "expansions.json",
+)
 
 # --- Ethics / documentation (written into artifacts/dataset_meta.json) ---
 LABEL_DISCLAIMER = (

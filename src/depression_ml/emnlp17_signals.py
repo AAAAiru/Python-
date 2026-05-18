@@ -21,7 +21,7 @@ _PLACEHOLDERS = ("_condition", "_doctor", "_ref")
 
 
 def _lexicon_dir() -> Path:
-    return config.PROJECT_ROOT / "reference" / "emnlp17-depression" / "user_selection"
+    return config.EMNLP17_USER_SELECTION_DIR
 
 
 def _read_nonempty_lines(path: Path) -> list[str]:
@@ -65,24 +65,66 @@ def _build_expanded_phrases(lines: Iterable[str], expansions: dict[str, list[str
 
 
 @lru_cache(maxsize=1)
-def _compiled_resources() -> tuple[frozenset[str], frozenset[str], frozenset[str]]:
+def _compiled_resources() -> tuple[frozenset[str], frozenset[str], frozenset[str], frozenset[str]]:
     root = _lexicon_dir()
     if not root.exists():
-        return frozenset(), frozenset(), frozenset()
+        return frozenset(), frozenset(), frozenset(), frozenset()
 
     exp_path = root / "expansions.json"
     expansions: dict[str, list[str]] = {}
     if exp_path.exists():
         expansions = json.loads(exp_path.read_text(encoding="utf-8"))
 
-    mh_terms = frozenset(t for t in _read_nonempty_lines(root / "mh_patterns.txt") if len(t) >= 2)
+    mh_terms = frozenset(t.lower() for t in _read_nonempty_lines(root / "mh_patterns.txt") if len(t) >= 2)
+
+    sub_names = frozenset(
+        re.sub(r"\s+", " ", ln.lower().strip())
+        for ln in _read_nonempty_lines(root / "mh_subreddits.txt")
+        if ln.strip() and len(ln.strip()) >= 2
+    )
 
     pos_lines = _read_nonempty_lines(root / "diagpatterns_positive.txt")
     neg_lines = _read_nonempty_lines(root / "diagpatterns_negative.txt")
 
     pos_phrases = _build_expanded_phrases(pos_lines, expansions, max_combo=80)
     neg_phrases = _build_expanded_phrases(neg_lines, expansions, max_combo=80)
-    return mh_terms, pos_phrases, neg_phrases
+    return mh_terms, pos_phrases, neg_phrases, sub_names
+
+
+def _subreddit_cues(
+    tpad: str,
+    sub_names: frozenset[str],
+    *,
+    collect_matches: bool,
+    match_limit: int,
+) -> tuple[float, float, list[str]]:
+    """Word-boundary hits for long names; ``r <name>`` hits for short names (<=3 chars) to reduce noise."""
+    lim = max(0, int(match_limit))
+    word_hits = 0
+    r_hits = 0
+    matched: list[str] = []
+    for name in sorted(sub_names, key=len, reverse=True):
+        n = name.lower().strip()
+        if len(n) < 2:
+            continue
+        rpat = f" r {n} "
+        has_r = rpat in tpad
+        if len(n) <= 3:
+            if has_r:
+                r_hits += 1
+                if collect_matches and len(matched) < lim:
+                    matched.append(f"r/{n}")
+            continue
+        has_w = f" {n} " in tpad
+        if has_w:
+            word_hits += 1
+            if collect_matches and len(matched) < lim:
+                matched.append(n)
+        elif has_r:
+            r_hits += 1
+            if collect_matches and len(matched) < lim:
+                matched.append(f"r/{n}")
+    return float(word_hits), float(r_hits), matched
 
 
 def extract_emnlp17_detailed(
@@ -97,17 +139,21 @@ def extract_emnlp17_detailed(
         "emnlp_mh_hits": 0.0,
         "emnlp_pos_diag": 0.0,
         "emnlp_neg_diag": 0.0,
+        "emnlp_subreddit_word_hits": 0.0,
+        "emnlp_subreddit_r_hits": 0.0,
         "mh_matches": [],
         "pos_matches": [],
         "neg_matches": [],
+        "subreddit_matches": [],
     }
     if not text:
         return empty
-    mh_terms, pos_phrases, neg_phrases = _compiled_resources()
-    if not mh_terms and not pos_phrases and not neg_phrases:
+    mh_terms, pos_phrases, neg_phrases, sub_names = _compiled_resources()
+    if not mh_terms and not pos_phrases and not neg_phrases and not sub_names:
         return empty
 
     tpad = f" {text} "
+    sw, sr, sub_m = _subreddit_cues(tpad, sub_names, collect_matches=collect_matches, match_limit=lim)
     mh_hits = 0
     pos_hits = 0
     neg_hits = 0
@@ -139,9 +185,12 @@ def extract_emnlp17_detailed(
         "emnlp_mh_hits": float(mh_hits),
         "emnlp_pos_diag": float(pos_hits),
         "emnlp_neg_diag": float(neg_hits),
+        "emnlp_subreddit_word_hits": sw,
+        "emnlp_subreddit_r_hits": sr,
         "mh_matches": mh_m,
         "pos_matches": pos_m,
         "neg_matches": neg_m,
+        "subreddit_matches": sub_m,
     }
 
 
@@ -152,4 +201,6 @@ def extract_emnlp17_features(text: str) -> dict[str, float]:
         "emnlp_mh_hits": float(d["emnlp_mh_hits"]),
         "emnlp_pos_diag": float(d["emnlp_pos_diag"]),
         "emnlp_neg_diag": float(d["emnlp_neg_diag"]),
+        "emnlp_subreddit_word_hits": float(d["emnlp_subreddit_word_hits"]),
+        "emnlp_subreddit_r_hits": float(d["emnlp_subreddit_r_hits"]),
     }

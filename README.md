@@ -108,7 +108,7 @@ pytest
 ## 6. 任务与模型
 
 - 预处理：英文小写、去 URL、非字母清洗（`preprocess.py`）；可选 **拉丁字母占比** 启发式（`looks_english`，阈值见 `config.py`）。
-- 特征：`TF-IDF`（稀疏矩阵）+ 词长/词数等统计量 + **VADER** 情感复合分 + **EMNLP’17 参考词典** 命中特征（`emnlp17_signals.py` / `features.py`），`StandardScaler(with_mean=False)`。
+- 特征：`TF-IDF`（稀疏矩阵）+ 词长/词数等统计量 + **VADER** 情感复合分 + **Georgetown `emnlp17-depression` 仓库中 `user_selection/`** 资源：`mh_patterns.txt`、`mh_subreddits.txt`（子版块名 / `r/…` 风格提及）、`diagpatterns_*` + `expansions.json`（`emnlp17_signals.py` / `features.py`），`StandardScaler(with_mean=False)`。参考代码里的 **Keras 用户级 CNN**（`reference/.../model/`）依赖过旧栈，本工程未嵌入，仅用其 **词典侧** 弱特征。
 - 模型：逻辑回归、`LinearSVC`（`CalibratedClassifierCV` 概率）、随机森林、**XGBoost**（若安装失败则自动跳过）。
 - 大规模训练集：默认对 **训练子集** 做分层抽样至 `MAX_TRAIN_ROWS`（见 `config.py`），验证集与官方测试集仍全量用于评估，以控制笔记本/普通电脑的内存占用。
 - 不平衡：`RandomOverSampler` + 多数模型的 `class_weight`。

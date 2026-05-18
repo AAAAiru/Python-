@@ -48,6 +48,18 @@ def test_emnlp17_counts_nonempty():
     feats = extract_emnlp17_features(text)
     assert feats["emnlp_mh_hits"] >= 0.0
     assert feats["emnlp_pos_diag"] >= 0.0
+    assert "emnlp_subreddit_word_hits" in feats
+    assert "emnlp_subreddit_r_hits" in feats
+
+
+def test_emnlp17_subreddit_r_style():
+    from depression_ml.preprocess import preprocess_text_en
+    from depression_ml.emnlp17_signals import extract_emnlp17_features
+
+    raw = "crossposted from r/bpd and r/suicidewatch please read"
+    clean = preprocess_text_en(raw)
+    feats = extract_emnlp17_features(clean)
+    assert feats["emnlp_subreddit_r_hits"] >= 1.0
 
 
 def test_platt_roundtrip():

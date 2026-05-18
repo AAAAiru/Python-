@@ -148,6 +148,12 @@ def run_training(
         {
             "source_note": bundle.source_note,
             "label_disclaimer": config.LABEL_DISCLAIMER,
+            "emnlp17_lexicon": {
+                "upstream_url": config.EMNLP17_UPSTREAM_URL,
+                "local_user_selection_dir": str(config.EMNLP17_USER_SELECTION_DIR),
+                "files_used": list(config.EMNLP17_LEXICON_FILES),
+                "note": "Weak-supervision style cues from EMNLP 2017 user_selection resources; not the paper's Keras model.",
+            },
         },
         artifacts_dir / "dataset_meta.json",
     )

@@ -1,7 +1,7 @@
 {
-  "low": 0.07036151317932789,
-  "high": 0.9635716210026349,
-  "operating_threshold": 0.2917642196300294,
+  "low": 0.06166620536742674,
+  "high": 0.9729926204987298,
+  "operating_threshold": 0.24215922900460748,
   "calibrated_on": "validation_split",
   "probability_calibration": "platt_validation"
 }

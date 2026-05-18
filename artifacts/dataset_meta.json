@@ -1,6 +1,18 @@
 {
   "source_note": "Single file split: depression_dataset_reddit_cleaned.csv (depression_dataset_reddit_cleaned)",
   "label_disclaimer": "Labels reflect dataset authors / heuristics (e.g. Reddit self-report or Kaggle crowdsourcing), not clinical diagnosis. Do not use outputs for medical decisions or crisis triage.",
-  "best_model": "random_forest",
+  "emnlp17_lexicon": {
+    "upstream_url": "https://github.com/Georgetown-IR-Lab/emnlp17-depression",
+    "local_user_selection_dir": "/Users/renran/Documents/GitHub/Python-/reference/emnlp17-depression/user_selection",
+    "files_used": [
+      "mh_patterns.txt",
+      "mh_subreddits.txt",
+      "diagpatterns_positive.txt",
+      "diagpatterns_negative.txt",
+      "expansions.json"
+    ],
+    "note": "Weak-supervision style cues from EMNLP 2017 user_selection resources; not the paper's Keras model."
+  },
+  "best_model": "xgboost",
   "probability_calibration": "platt_validation"
 }

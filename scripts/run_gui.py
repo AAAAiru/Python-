@@ -195,11 +195,13 @@ class DepressionDetectorGUI:
 
         self.lex_label.config(
             text=(
-                "Lexicon (EMNLP’17 user_selection, explainability only)\n"
-                f"Counts — MH={int(det['emnlp_mh_hits'])}, pos_diag≈{int(det['emnlp_pos_diag'])}, neg_diag≈{int(det['emnlp_neg_diag'])}\n"
+                "Lexicon (Georgetown emnlp17-depression / user_selection — explainability only)\n"
+                f"Counts — MH={int(det['emnlp_mh_hits'])}, pos_diag≈{int(det['emnlp_pos_diag'])}, neg_diag≈{int(det['emnlp_neg_diag'])}, "
+                f"sub_word={int(det['emnlp_subreddit_word_hits'])}, sub_r={int(det['emnlp_subreddit_r_hits'])}\n"
                 f"{_fmt('MH terms', det['mh_matches'])}\n"
                 f"{_fmt('Pos phrases', det['pos_matches'])}\n"
-                f"{_fmt('Neg phrases', det['neg_matches'])}"
+                f"{_fmt('Neg phrases', det['neg_matches'])}\n"
+                f"{_fmt('Subreddits', det['subreddit_matches'])}"
             )
         )
 
