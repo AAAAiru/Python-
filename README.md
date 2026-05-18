@@ -62,6 +62,28 @@ Kaggle：<https://www.kaggle.com/datasets/maazkareem/sentiment-and-mental-health
 
 若 `data/` 下没有任何 CSV，训练脚本会自动生成 `synthetic_train.csv` / `synthetic_test.csv` 以便连通性自检（指标无科研意义，仅用于验收管道）。
 
+### D. 本地数据库（推荐）
+
+按 `data/sources.json` **合并多源 CSV** 构建 SQLite（`data/depression.db`）及固定 **train / val / test** 划分：
+
+```bash
+python scripts/build_dataset.py --list-sources
+python scripts/build_dataset.py --all-sources
+```
+
+可选 Kaggle 数据（下载后放入 `data/`，见 `data/README.md`）：
+
+- `combined_data.csv` — *sentiment-analysis-for-mental-health*
+- `urdu_depression_dataset.csv` — *urdu-depression-severity-dataset-2024-2025*
+
+仅 Reddit 单文件：
+
+```bash
+python scripts/build_dataset.py --source data/depression_dataset_reddit_cleaned.csv
+```
+
+生成：`depression.db`、`train|val|test.csv`、`dataset_stats.json`（含各 `source_id` 行数）。训练优先读库。
+
 ## 3. 训练
 
 ```bash

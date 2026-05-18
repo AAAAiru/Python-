@@ -1,1 +1,1 @@
-xgboost
+linear_svc

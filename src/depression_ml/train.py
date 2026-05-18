@@ -30,6 +30,7 @@ from .evaluate import (
     plot_roc,
 )
 from .features import fit_tfidf, vectorize_text_stats
+from .data_db import dataset_stats
 from .io_data import DatasetBundle, auto_load
 from .preprocess import preprocess_text_en
 from . import probability_calibrate as pcal
@@ -148,6 +149,7 @@ def run_training(
         {
             "source_note": bundle.source_note,
             "label_disclaimer": config.LABEL_DISCLAIMER,
+            "dataset_build": dataset_stats(data_dir),
             "emnlp17_lexicon": {
                 "upstream_url": config.EMNLP17_UPSTREAM_URL,
                 "local_user_selection_dir": str(config.EMNLP17_USER_SELECTION_DIR),
@@ -164,22 +166,28 @@ def run_training(
     train_df["text_clean"] = train_df["text_raw"].map(preprocess_text_en)
     test_df["text_clean"] = test_df["text_raw"].map(preprocess_text_en)
 
-    y_train_full = _binary_labels(train_df, config.POSITIVE_LABELS)
     y_test = _binary_labels(test_df, config.POSITIVE_LABELS)
 
-    vf = val_fraction if val_fraction is not None else config.VAL_FRACTION
-    idx = np.arange(len(train_df))
-    tr_idx, va_idx = train_test_split(
-        idx,
-        test_size=vf,
-        random_state=config.RANDOM_STATE,
-        stratify=y_train_full,
-    )
-
-    tr = train_df.iloc[tr_idx].reset_index(drop=True)
-    va = train_df.iloc[va_idx].reset_index(drop=True)
-    y_tr = y_train_full[tr_idx]
-    y_va = y_train_full[va_idx]
+    if bundle.val is not None and len(bundle.val) > 0:
+        va = bundle.val.copy()
+        va["text_clean"] = va["text_raw"].map(preprocess_text_en)
+        tr = train_df.reset_index(drop=True)
+        y_tr = _binary_labels(tr, config.POSITIVE_LABELS)
+        y_va = _binary_labels(va, config.POSITIVE_LABELS)
+    else:
+        y_train_full = _binary_labels(train_df, config.POSITIVE_LABELS)
+        vf = val_fraction if val_fraction is not None else config.VAL_FRACTION
+        idx = np.arange(len(train_df))
+        tr_idx, va_idx = train_test_split(
+            idx,
+            test_size=vf,
+            random_state=config.RANDOM_STATE,
+            stratify=y_train_full,
+        )
+        tr = train_df.iloc[tr_idx].reset_index(drop=True)
+        va = train_df.iloc[va_idx].reset_index(drop=True)
+        y_tr = y_train_full[tr_idx]
+        y_va = y_train_full[va_idx]
 
     tr, y_tr = _maybe_subsample(tr, y_tr)
 

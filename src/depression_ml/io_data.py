@@ -22,6 +22,7 @@ class DatasetBundle:
     text_column: str
     label_column: str
     source_note: str
+    val: pd.DataFrame | None = None
 
 
 def _pick_column(df: pd.DataFrame, candidates: tuple[str, ...]) -> Optional[str]:
@@ -94,10 +95,45 @@ def load_single_file_split(path: Path, test_size: float = 0.2, random_state: int
     return DatasetBundle(train=tr.reset_index(drop=True), test=te.reset_index(drop=True), text_column="text_raw", label_column="label_raw", source_note=note)
 
 
+def load_from_standard_splits(data_dir: Path) -> DatasetBundle | None:
+    """Load pre-built train.csv, val.csv, test.csv if all exist."""
+    tr_p, va_p, te_p = data_dir / "train.csv", data_dir / "val.csv", data_dir / "test.csv"
+    if not (tr_p.exists() and te_p.exists()):
+        return None
+    tr = _read_csv(tr_p)
+    te = _read_csv(te_p)
+    t_tr, l_tr = _normalize_columns(tr)
+    t_te, l_te = _normalize_columns(te)
+    if not all([t_tr, l_tr, t_te, l_te]):
+        return None
+    tr_n = _prepare_frame(tr, t_tr, l_tr)
+    te_n = _prepare_frame(te, t_te, l_te)
+    va_n = None
+    if va_p.exists():
+        va = _read_csv(va_p)
+        t_va, l_va = _normalize_columns(va)
+        if t_va and l_va:
+            va_n = _prepare_frame(va, t_va, l_va)
+    note = "Standard splits: train.csv, val.csv, test.csv"
+    return DatasetBundle(
+        train=tr_n, test=te_n, text_column="text_raw", label_column="label_raw", source_note=note, val=va_n
+    )
+
+
 def auto_load(data_dir: Path | None = None) -> DatasetBundle:
     """Pick the best available layout under data/."""
     data_dir = data_dir or DATA_DIR
     files = _list_csv_files(data_dir)
+
+    from .data_db import db_path, load_from_db
+
+    if db_path(data_dir).exists():
+        return load_from_db(data_dir)
+
+    built = load_from_standard_splits(data_dir)
+    if built is not None:
+        return built
+
     if not files:
         raise FileNotFoundError(
             f"No CSV files found in {data_dir}. "

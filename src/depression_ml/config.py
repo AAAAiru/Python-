@@ -7,6 +7,13 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = PROJECT_ROOT / "data"
 ARTIFACTS_DIR = PROJECT_ROOT / "artifacts"
+DATASET_DB_FILENAME = "depression.db"
+
+# Dataset cleaning when building SQLite / train|val|test CSV exports
+MIN_DATASET_TEXT_CHARS = 20
+DATASET_TRAIN_RATIO = 0.64
+DATASET_VAL_RATIO = 0.16
+DATASET_TEST_RATIO = 0.20
 
 # TF-IDF (keep moderate dimensionality for laptop RAM with dense tree models)
 TFIDF_MAX_FEATURES = 6000

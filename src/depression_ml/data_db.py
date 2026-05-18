@@ -19,16 +19,18 @@ from .preprocess import preprocess_text_en
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS samples (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    text_raw TEXT NOT NULL UNIQUE,
+    text_raw TEXT NOT NULL,
     label_raw TEXT NOT NULL,
-    text_clean TEXT NOT NULL,
+    text_clean TEXT NOT NULL UNIQUE,
     char_len INTEGER NOT NULL,
     split_name TEXT NOT NULL CHECK (split_name IN ('train', 'val', 'test')),
+    source_id TEXT NOT NULL DEFAULT 'unknown',
     source_file TEXT,
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_samples_split ON samples(split_name);
 CREATE INDEX IF NOT EXISTS idx_samples_label ON samples(label_raw);
+CREATE INDEX IF NOT EXISTS idx_samples_source ON samples(source_id);
 CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -73,6 +75,145 @@ def _clean_source_frame(df: pd.DataFrame, *, text_col: str, label_col: str, min_
     return out.reset_index(drop=True)
 
 
+def _write_db_and_exports(
+    combined: pd.DataFrame,
+    *,
+    data_dir: Path,
+    stats_base: dict[str, Any],
+    export_csv: bool,
+) -> dict[str, Any]:
+    now = datetime.now(timezone.utc).isoformat()
+    path = db_path(data_dir)
+    with _connect(path) as conn:
+        conn.execute("DROP TABLE IF EXISTS samples")
+        conn.commit()
+    init_db(path)
+
+    with _connect(path) as conn:
+        conn.execute("DELETE FROM meta")
+        rows = [
+            (
+                str(r.text_raw),
+                str(r.label_raw),
+                str(r.text_clean),
+                int(r.char_len),
+                str(r.split_name),
+                str(getattr(r, "source_id", "unknown")),
+                str(getattr(r, "source_file", "")),
+                now,
+            )
+            for r in combined.itertuples(index=False)
+        ]
+        conn.executemany(
+            """
+            INSERT INTO samples(
+                text_raw, label_raw, text_clean, char_len, split_name, source_id, source_file, created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            rows,
+        )
+        stats = {**stats_base, "built_at": now, "label_disclaimer": config.LABEL_DISCLAIMER}
+        _set_meta(conn, "dataset_stats", json.dumps(stats, ensure_ascii=False))
+        _set_meta(conn, "label_disclaimer", config.LABEL_DISCLAIMER)
+        conn.commit()
+
+    if export_csv:
+        data_dir.mkdir(parents=True, exist_ok=True)
+        for name in ("train", "val", "test"):
+            part = combined[combined["split_name"] == name]
+            export = part[["text_raw", "label_raw"]].rename(
+                columns={"text_raw": "clean_text", "label_raw": "is_depression"}
+            )
+            export.to_csv(data_dir / f"{name}.csv", index=False, encoding="utf-8")
+        (data_dir / "dataset_stats.json").write_text(
+            json.dumps(stats, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+
+    stats["db_path"] = str(path)
+    return stats
+
+
+def _stratified_splits(
+    clean: pd.DataFrame,
+    *,
+    train_ratio: float,
+    val_ratio: float,
+    test_ratio: float,
+    random_state: int,
+) -> pd.DataFrame:
+    y = clean["label_raw"].astype(str)
+    tr_val, te = train_test_split(
+        clean,
+        test_size=test_ratio,
+        random_state=random_state,
+        stratify=y,
+    )
+    val_rel = val_ratio / (train_ratio + val_ratio)
+    tr, va = train_test_split(
+        tr_val,
+        test_size=val_rel,
+        random_state=random_state,
+        stratify=tr_val["label_raw"].astype(str),
+    )
+    for name, part in (("train", tr), ("val", va), ("test", te)):
+        part["split_name"] = name
+    return pd.concat([tr, va, te], ignore_index=True)
+
+
+def build_merged_dataset(
+    *,
+    data_dir: Path | None = None,
+    source_ids: list[str] | None = None,
+    min_chars: int | None = None,
+    train_ratio: float | None = None,
+    val_ratio: float | None = None,
+    test_ratio: float | None = None,
+    random_state: int | None = None,
+    export_csv: bool = True,
+    english_only: bool = True,
+) -> dict[str, Any]:
+    """Merge CSVs listed in data/sources.json, split, write SQLite + train|val|test CSV."""
+    from .data_import import discover_and_load
+
+    data_dir = data_dir or config.DATA_DIR
+    min_chars = int(min_chars if min_chars is not None else config.MIN_DATASET_TEXT_CHARS)
+    tr = float(train_ratio if train_ratio is not None else config.DATASET_TRAIN_RATIO)
+    vr = float(val_ratio if val_ratio is not None else config.DATASET_VAL_RATIO)
+    te = float(test_ratio if test_ratio is not None else config.DATASET_TEST_RATIO)
+    random_state = int(random_state if random_state is not None else config.RANDOM_STATE)
+    if abs(tr + vr + te - 1.0) > 1e-6:
+        raise ValueError("train_ratio + val_ratio + test_ratio must equal 1.0")
+
+    merged, import_report = discover_and_load(
+        data_dir,
+        source_ids=source_ids,
+        english_only=english_only,
+        min_chars=min_chars,
+    )
+    if len(merged) < 20:
+        raise ValueError(f"Only {len(merged)} rows after merge; add more source CSV files.")
+
+    combined = _stratified_splits(merged, train_ratio=tr, val_ratio=vr, test_ratio=te, random_state=random_state)
+    by_source = combined.groupby("source_id").size().astype(int).to_dict() if "source_id" in combined.columns else {}
+
+    stats_base = {
+        "mode": "merged_sources",
+        "import_report": import_report,
+        "rows_after_merge": int(import_report.get("rows_merged", len(merged))),
+        "rows_after_split_total": len(combined),
+        "min_chars": min_chars,
+        "splits": {
+            "train": int((combined["split_name"] == "train").sum()),
+            "val": int((combined["split_name"] == "val").sum()),
+            "test": int((combined["split_name"] == "test").sum()),
+        },
+        "per_source_in_db": by_source,
+        "label_counts": combined["label_raw"].value_counts().astype(int).to_dict(),
+    }
+    return _write_db_and_exports(combined, data_dir=data_dir, stats_base=stats_base, export_csv=export_csv)
+
+
 def build_dataset(
     source_csv: Path,
     *,
@@ -104,85 +245,32 @@ def build_dataset(
             f"Only {len(clean)} rows after cleaning (min_chars={min_chars}). "
             "Need more source data or lower min_chars."
         )
-    y = clean["label_raw"].astype(str)
+    clean["source_id"] = "single_csv"
+    clean["source_file"] = source_csv.name
 
-    # First hold out test; then split remainder into train/val
-    tr_val, te = train_test_split(
+    combined = _stratified_splits(
         clean,
-        test_size=test_ratio,
+        train_ratio=train_ratio,
+        val_ratio=val_ratio,
+        test_ratio=test_ratio,
         random_state=random_state,
-        stratify=y,
-    )
-    val_rel = val_ratio / (train_ratio + val_ratio)
-    tr, va = train_test_split(
-        tr_val,
-        test_size=val_rel,
-        random_state=random_state,
-        stratify=tr_val["label_raw"].astype(str),
     )
 
-    for name, part in (("train", tr), ("val", va), ("test", te)):
-        part["split_name"] = name
-
-    combined = pd.concat([tr, va, te], ignore_index=True)
-    now = datetime.now(timezone.utc).isoformat()
-    path = db_path(data_dir)
-    init_db(path)
-
-    with _connect(path) as conn:
-        conn.execute("DELETE FROM samples")
-        conn.execute("DELETE FROM meta")
-        rows = [
-            (
-                str(r.text_raw),
-                str(r.label_raw),
-                str(r.text_clean),
-                int(r.char_len),
-                str(r.split_name),
-                source_csv.name,
-                now,
-            )
-            for r in combined.itertuples(index=False)
-        ]
-        conn.executemany(
-            """
-            INSERT INTO samples(text_raw, label_raw, text_clean, char_len, split_name, source_file, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            rows,
-        )
-        stats = {
-            "source_file": source_csv.name,
-            "rows_source": before_rows,
-            "rows_after_clean": len(clean),
-            "rows_dropped": before_rows - len(clean),
-            "min_chars": min_chars,
-            "splits": {
-                "train": len(tr),
-                "val": len(va),
-                "test": len(te),
-            },
-            "label_counts": clean["label_raw"].value_counts().astype(int).to_dict(),
-            "built_at": now,
-            "label_disclaimer": config.LABEL_DISCLAIMER,
-        }
-        _set_meta(conn, "dataset_stats", json.dumps(stats, ensure_ascii=False))
-        _set_meta(conn, "label_disclaimer", config.LABEL_DISCLAIMER)
-        conn.commit()
-
-    if export_csv:
-        data_dir.mkdir(parents=True, exist_ok=True)
-        for name, part in (("train", tr), ("val", va), ("test", te)):
-            export = part[["text_raw", "label_raw"]].rename(
-                columns={"text_raw": "clean_text", "label_raw": "is_depression"}
-            )
-            export.to_csv(data_dir / f"{name}.csv", index=False, encoding="utf-8")
-        (data_dir / "dataset_stats.json").write_text(
-            json.dumps(stats, indent=2, ensure_ascii=False), encoding="utf-8"
-        )
-
-    stats["db_path"] = str(path)
-    return stats
+    stats_base = {
+        "mode": "single_csv",
+        "source_file": source_csv.name,
+        "rows_source": before_rows,
+        "rows_after_clean": len(clean),
+        "rows_dropped": before_rows - len(clean),
+        "min_chars": min_chars,
+        "splits": {
+            "train": int((combined["split_name"] == "train").sum()),
+            "val": int((combined["split_name"] == "val").sum()),
+            "test": int((combined["split_name"] == "test").sum()),
+        },
+        "label_counts": clean["label_raw"].value_counts().astype(int).to_dict(),
+    }
+    return _write_db_and_exports(combined, data_dir=data_dir, stats_base=stats_base, export_csv=export_csv)
 
 
 def load_from_db(data_dir: Path | None = None) -> DatasetBundle:

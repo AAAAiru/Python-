@@ -1,83 +1,83 @@
 {
-  "bundle": "Single file split: depression_dataset_reddit_cleaned.csv (depression_dataset_reddit_cleaned)",
+  "bundle": "SQLite: depression.db (train=4893, val=1224, test=1530)",
   "label_disclaimer": "Labels reflect dataset authors / heuristics (e.g. Reddit self-report or Kaggle crowdsourcing), not clinical diagnosis. Do not use outputs for medical decisions or crisis triage.",
   "positive_labels": [
     "Depression"
   ],
-  "best_model": "xgboost",
+  "best_model": "linear_svc",
   "val_metrics_per_model": {
     "logistic_regression": {
-      "f1": 0.9337748344370861,
-      "f2": 0.935633709356337,
-      "precision": 0.9306930693069307,
-      "recall": 0.9368770764119602,
-      "roc_auc": 0.9749067951415966,
-      "pr_auc": 0.9802690042712052
+      "f1": 0.9393442622950819,
+      "f2": 0.9347471451876019,
+      "precision": 0.947107438016529,
+      "recall": 0.9317073170731708,
+      "roc_auc": 0.9837425073758126,
+      "pr_auc": 0.986565273996228
     },
     "linear_svc": {
-      "f1": 0.929159802306425,
-      "f2": 0.9337748344370861,
-      "precision": 0.9215686274509803,
-      "recall": 0.9368770764119602,
-      "roc_auc": 0.9794041298565339,
-      "pr_auc": 0.9836805844323451
+      "f1": 0.9515201314708299,
+      "f2": 0.9454604833442195,
+      "precision": 0.9617940199335548,
+      "recall": 0.9414634146341463,
+      "roc_auc": 0.9856862509511793,
+      "pr_auc": 0.9887333382093989
     },
     "random_forest": {
-      "f1": 0.963855421686747,
-      "f2": 0.9433962264150944,
-      "precision": 1.0,
-      "recall": 0.9302325581395349,
-      "roc_auc": 0.9822563587612567,
-      "pr_auc": 0.9885169622646309
+      "f1": 0.9532710280373832,
+      "f2": 0.92819324950364,
+      "precision": 0.998220640569395,
+      "recall": 0.9121951219512195,
+      "roc_auc": 0.9852817493692178,
+      "pr_auc": 0.9892940890300495
     },
     "xgboost": {
-      "f1": 0.9658703071672355,
-      "f2": 0.9503022162525184,
-      "precision": 0.9929824561403509,
-      "recall": 0.9401993355481728,
-      "roc_auc": 0.9868872247919582,
-      "pr_auc": 0.9899452981368683
+      "f1": 0.956081081081081,
+      "f2": 0.9343017497523936,
+      "precision": 0.9947275922671354,
+      "recall": 0.9203252032520325,
+      "roc_auc": 0.9846516346936868,
+      "pr_auc": 0.9890949008248473
     }
   },
   "test_metrics": {
-    "f1": 0.966078697421981,
-    "f2": 0.9544235924932976,
-    "precision": 0.9861495844875346,
-    "recall": 0.9468085106382979,
-    "roc_auc": 0.9884600790351694,
-    "pr_auc": 0.9912401494497766
+    "f1": 0.9144936325045482,
+    "f2": 0.9537060460409815,
+    "precision": 0.8558456299659478,
+    "recall": 0.9817708333333334,
+    "roc_auc": 0.9898721155949257,
+    "pr_auc": 0.9913739687195948
   },
   "classification_report": {
     "Normal": {
-      "precision": 0.9504950495049505,
-      "recall": 0.987146529562982,
-      "f1-score": 0.9684741488020177,
-      "support": 778.0
+      "precision": 0.9784283513097073,
+      "recall": 0.8333333333333334,
+      "f1-score": 0.9000708717221828,
+      "support": 762.0
     },
     "Depression": {
-      "precision": 0.9861495844875346,
-      "recall": 0.9468085106382979,
-      "f1-score": 0.966078697421981,
-      "support": 752.0
+      "precision": 0.8558456299659478,
+      "recall": 0.9817708333333334,
+      "f1-score": 0.9144936325045482,
+      "support": 768.0
     },
-    "accuracy": 0.9673202614379085,
+    "accuracy": 0.907843137254902,
     "macro avg": {
-      "precision": 0.9683223169962425,
-      "recall": 0.9669775201006399,
-      "f1-score": 0.9672764231119994,
+      "precision": 0.9171369906378275,
+      "recall": 0.9075520833333334,
+      "f1-score": 0.9072822521133654,
       "support": 1530.0
     },
     "weighted avg": {
-      "precision": 0.9680193699669788,
-      "recall": 0.9673202614379085,
-      "f1-score": 0.9672967766204572,
+      "precision": 0.916896632360683,
+      "recall": 0.907843137254902,
+      "f1-score": 0.9073105320364683,
       "support": 1530.0
     }
   },
   "risk_thresholds": {
-    "low": 0.06166620536742674,
-    "high": 0.9729926204987298,
-    "operating_threshold": 0.24215922900460748,
+    "low": 0.044067933743520776,
+    "high": 0.972747669383601,
+    "operating_threshold": 0.10725968333442507,
     "calibrated_on": "validation_split",
     "probability_calibration": "platt_validation"
   }

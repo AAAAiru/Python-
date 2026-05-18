@@ -62,7 +62,29 @@ def test_emnlp17_subreddit_r_style():
     assert feats["emnlp_subreddit_r_hits"] >= 1.0
 
 
-def test_platt_roundtrip():
+def test_build_dataset_sqlite(tmp_path: Path):
+    from depression_ml.data_db import build_dataset, load_from_db
+
+    src = tmp_path / "source.csv"
+    rows = 80
+    df = pd.DataFrame(
+        {
+            "clean_text": [
+                (
+                    f"post type {'depression' if i % 2 else 'normal'} marker {chr(97 + i % 26)} "
+                    f"extra words about feelings support and daily experience"
+                )
+                for i in range(rows)
+            ],
+            "is_depression": [0] * (rows // 2) + [1] * (rows - rows // 2),
+        }
+    )
+    df.to_csv(src, index=False)
+    stats = build_dataset(src, data_dir=tmp_path, min_chars=10, export_csv=True)
+    assert stats["rows_after_clean"] > 0
+    bundle = load_from_db(tmp_path)
+    assert bundle.val is not None and len(bundle.val) > 0
+    assert len(bundle.train) + len(bundle.val) + len(bundle.test) == stats["rows_after_clean"]
     from depression_ml.probability_calibrate import apply_platt, fit_platt_calibrator
 
     rng = np.random.default_rng(0)
