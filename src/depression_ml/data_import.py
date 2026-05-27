@@ -24,6 +24,7 @@ class SourceSpec:
     label_type: str = "binary_numeric"
     alt_files: tuple[str, ...] = ()
     required: bool = False
+    min_chars: int | None = None
 
 
 def _manifest_path(data_dir: Path) -> Path:
@@ -49,6 +50,7 @@ def load_manifest(data_dir: Path | None = None) -> list[SourceSpec]:
                 label_type=str(item.get("label_type", "binary_numeric")),
                 alt_files=tuple(item.get("alt_files") or []),
                 required=bool(item.get("required", False)),
+                min_chars=item.get("min_chars"),
             )
         )
     return specs
@@ -167,7 +169,7 @@ def discover_and_load(
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Load all available sources from manifest; skip missing optional files."""
     data_dir = data_dir or config.DATA_DIR
-    min_chars = int(min_chars if min_chars is not None else config.MIN_DATASET_TEXT_CHARS)
+    default_min = int(min_chars if min_chars is not None else config.MIN_DATASET_TEXT_CHARS)
     manifest = load_manifest(data_dir)
     if not manifest:
         raise FileNotFoundError(f"No sources.json in {data_dir}")
@@ -187,8 +189,9 @@ def discover_and_load(
             else:
                 report["skipped"].append({**entry, "reason": "file_not_found"})
             continue
+        effective_min = int(spec.min_chars if spec.min_chars is not None else default_min)
         frame = load_source_frame(
-            path, spec, english_only=english_only, min_chars=min_chars
+            path, spec, english_only=english_only, min_chars=effective_min
         )
         frames.append(frame)
         report["loaded"].append(

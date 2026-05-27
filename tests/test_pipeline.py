@@ -9,18 +9,18 @@ import pandas as pd
 
 
 def test_binary_labels_numeric():
-    from depression_ml.train import _binary_labels
+    from depression_ml.labels import binary_labels
 
     df = pd.DataFrame({"label_raw": [0, 1, 0, 1]})
-    y = _binary_labels(df, {"Depression"})
+    y = binary_labels(df, {"Depression"})
     assert np.array_equal(y, np.array([0, 1, 0, 1]))
 
 
 def test_binary_labels_string_class():
-    from depression_ml.train import _binary_labels
+    from depression_ml.labels import binary_labels
 
     df = pd.DataFrame({"label_raw": ["Normal", "Depression", "Normal"]})
-    y = _binary_labels(df, {"Depression"})
+    y = binary_labels(df, {"Depression"})
     assert np.array_equal(y, np.array([0, 1, 0]))
 
 

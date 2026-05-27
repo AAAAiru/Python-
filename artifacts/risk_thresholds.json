@@ -1,7 +1,8 @@
 {
-  "low": 0.044067933743520776,
-  "high": 0.972747669383601,
+  "low": 0.28,
+  "high": 0.8578520586332015,
   "operating_threshold": 0.10725968333442507,
+  "derived_from": "class_conditional_quantiles",
   "calibrated_on": "validation_split",
   "probability_calibration": "platt_validation"
 }

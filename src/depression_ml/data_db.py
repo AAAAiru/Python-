@@ -273,6 +273,46 @@ def build_dataset(
     return _write_db_and_exports(combined, data_dir=data_dir, stats_base=stats_base, export_csv=export_csv)
 
 
+def load_all_samples(data_dir: Path | None = None) -> pd.DataFrame:
+    """Load every row from SQLite (all splits) including source_id."""
+    path = db_path(data_dir)
+    if not path.exists():
+        raise FileNotFoundError(path)
+    with _connect(path) as conn:
+        cur = conn.execute(
+            """
+            SELECT text_raw, label_raw, text_clean, split_name, source_id, source_file
+            FROM samples ORDER BY id
+            """
+        )
+        return pd.DataFrame(
+            cur.fetchall(),
+            columns=["text_raw", "label_raw", "text_clean", "split_name", "source_id", "source_file"],
+        )
+
+
+def needs_rebuild(data_dir: Path | None = None) -> bool:
+    """True when a manifest CSV is newer than the DB or a new source file appeared."""
+    from .data_import import load_manifest, resolve_source_path
+
+    data_dir = data_dir or config.DATA_DIR
+    db = db_path(data_dir)
+    if not db.exists():
+        return True
+    db_mtime = db.stat().st_mtime
+    stats = dataset_stats(data_dir)
+    per_source = stats.get("per_source_in_db") or {}
+    for spec in load_manifest(data_dir):
+        path = resolve_source_path(data_dir, spec)
+        if path is None:
+            continue
+        if spec.id not in per_source:
+            return True
+        if path.stat().st_mtime > db_mtime + 1.0:
+            return True
+    return False
+
+
 def load_from_db(data_dir: Path | None = None) -> DatasetBundle:
     path = db_path(data_dir)
     if not path.exists():

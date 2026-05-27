@@ -122,10 +122,13 @@ class DepressionDetectorGUI:
         )
         self.text_input.pack(padx=16, pady=4, fill=tk.BOTH, expand=True)
 
-        btn_bar = tk.Frame(body, bg="#2E7D32", cursor="hand2")
-        btn_bar.pack(pady=12)
-        btn_lbl = tk.Label(
-            btn_bar,
+        btn_row = tk.Frame(body, bg=win_bg)
+        btn_row.pack(pady=12)
+
+        run_bar = tk.Frame(btn_row, bg="#2E7D32", cursor="hand2")
+        run_bar.pack(side=tk.LEFT, padx=(0, 10))
+        run_lbl = tk.Label(
+            run_bar,
             text="Run assessment",
             bg="#2E7D32",
             fg="#ffffff",
@@ -133,9 +136,28 @@ class DepressionDetectorGUI:
             padx=28,
             pady=10,
         )
-        btn_lbl.pack()
-        btn_bar.bind("<Button-1>", lambda _e: self.predict())
-        btn_lbl.bind("<Button-1>", lambda _e: self.predict())
+        run_lbl.pack()
+        run_bar.bind("<Button-1>", lambda _e: self.predict())
+        run_lbl.bind("<Button-1>", lambda _e: self.predict())
+
+        clear_bar = tk.Frame(btn_row, bg="#757575", cursor="hand2")
+        clear_bar.pack(side=tk.LEFT)
+        clear_lbl = tk.Label(
+            clear_bar,
+            text="Clear text",
+            bg="#757575",
+            fg="#ffffff",
+            font=_font_heading(),
+            padx=28,
+            pady=10,
+        )
+        clear_lbl.pack()
+        clear_bar.bind("<Button-1>", lambda _e: self.clear_text())
+        clear_lbl.bind("<Button-1>", lambda _e: self.clear_text())
+
+    def clear_text(self) -> None:
+        self.text_input.delete("1.0", tk.END)
+        self.text_input.focus_set()
 
     def predict(self) -> None:
         from depression_ml import config

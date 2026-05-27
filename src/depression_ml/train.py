@@ -21,6 +21,7 @@ from . import config
 from .evaluate import (
     best_threshold_fbeta,
     classification_report_dict,
+    derive_risk_thresholds,
     dump_json,
     evaluate_binary,
     plot_calibration_reliability,
@@ -30,20 +31,13 @@ from .evaluate import (
     plot_roc,
 )
 from .features import fit_tfidf, vectorize_text_stats
-from .data_db import dataset_stats
+from .data_db import build_merged_dataset, dataset_stats, needs_rebuild
+from .embedding_baseline import predict_embedding_proba, save_embedding_artifacts, train_embedding_classifier
 from .io_data import DatasetBundle, auto_load
+from .oov_eval import run_oov_eval
+from .labels import binary_labels as _binary_labels
 from .preprocess import preprocess_text_en
 from . import probability_calibrate as pcal
-
-
-def _binary_labels(df: pd.DataFrame, positive_labels: set[str]) -> np.ndarray:
-    col = df["label_raw"]
-    num = pd.to_numeric(col, errors="coerce")
-    if num.notna().all():
-        u = np.unique(num.to_numpy(dtype=float))
-        if u.size <= 2 and np.all(np.isin(u, (0.0, 1.0))):
-            return (num.to_numpy(dtype=float) == 1.0).astype(int)
-    return col.isin(positive_labels).astype(int).to_numpy()
 
 
 def _maybe_subsample(tr: pd.DataFrame, y_tr: np.ndarray) -> tuple[pd.DataFrame, np.ndarray]:
@@ -133,10 +127,21 @@ def run_training(
     fast: bool = True,
     oversample: bool = True,
     val_fraction: float | None = None,
+    rebuild_data: bool = False,
+    auto_rebuild_data: bool | None = None,
+    with_embeddings: bool | None = None,
+    run_oov: bool | None = None,
 ) -> dict[str, Any]:
     data_dir = data_dir or config.DATA_DIR
     artifacts_dir = artifacts_dir or config.ARTIFACTS_DIR
     artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+    auto_rebuild = config.AUTO_REBUILD_DATA if auto_rebuild_data is None else auto_rebuild_data
+    if rebuild_data or (auto_rebuild and needs_rebuild(data_dir)):
+        build_merged_dataset(data_dir=data_dir, export_csv=True)
+
+    try_embeddings = config.TRAIN_EMBEDDING_BASELINE if with_embeddings is None else with_embeddings
+    do_oov = True if run_oov is None else run_oov
 
     try:
         bundle: DatasetBundle = auto_load(data_dir)
@@ -198,6 +203,9 @@ def run_training(
     X_va = vectorize_text_stats(vectorizer, scaler, va["text_clean"], fit_scaler=False)
     X_te = vectorize_text_stats(vectorizer, scaler, test_df["text_clean"], fit_scaler=False)
 
+    emb_tr_texts = tr["text_clean"]
+    y_emb_tr = y_tr.copy()
+
     if oversample and y_tr.mean() > 0.01 and y_tr.mean() < 0.99:
         ros = RandomOverSampler(random_state=config.RANDOM_STATE)
         X_tr, y_tr = ros.fit_resample(X_tr, y_tr)
@@ -252,12 +260,13 @@ def run_training(
     test_metrics = evaluate_binary(y_test, pred_te, p_te)
     report = classification_report_dict(y_test, pred_te)
 
-    low = float(np.quantile(p_va, 0.33))
-    high = float(np.quantile(p_va, 0.66))
     risk = {
-        "low": min(config.RISK_LOW_DEFAULT, low),
-        "high": max(config.RISK_HIGH_DEFAULT, high),
-        "operating_threshold": thr_f2,
+        **derive_risk_thresholds(
+            y_va,
+            p_va,
+            low_default=config.RISK_LOW_DEFAULT,
+            high_default=config.RISK_HIGH_DEFAULT,
+        ),
         "calibrated_on": "validation_split",
         "probability_calibration": platt_note,
     }
@@ -292,6 +301,49 @@ def run_training(
     meta = json.loads(meta_path.read_text(encoding="utf-8"))
     meta["best_model"] = best_name
     meta["probability_calibration"] = platt_note
+
+    embedding_summary: dict[str, Any] | None = None
+    if try_embeddings:
+        try:
+            emb_clf, emb_scaler, emb_val, emb_thr = train_embedding_classifier(
+                emb_tr_texts, y_emb_tr, va["text_clean"], y_va
+            )
+            save_embedding_artifacts(
+                emb_clf,
+                emb_scaler,
+                model_name=config.EMBEDDING_MODEL_NAME,
+                threshold=emb_thr,
+                val_metrics=emb_val,
+                artifacts_dir=artifacts_dir,
+            )
+            p_te_emb = predict_embedding_proba(test_df["text_clean"], emb_clf, emb_scaler)
+            pred_te_emb = (p_te_emb >= emb_thr).astype(int)
+            emb_test = evaluate_binary(y_test, pred_te_emb, p_te_emb)
+            val_results["embedding_minilm"] = emb_val
+            embedding_summary = {"val_metrics": emb_val, "test_metrics": emb_test, "threshold": emb_thr}
+            meta["embedding_baseline"] = embedding_summary
+        except ImportError as exc:
+            embedding_summary = {"skipped": True, "reason": str(exc)}
+            meta["embedding_baseline"] = embedding_summary
+
+    oov_report: dict[str, Any] | None = None
+    if do_oov:
+        try:
+            oov_report = run_oov_eval(
+                data_dir=data_dir,
+                artifacts_dir=artifacts_dir,
+                with_embeddings=try_embeddings,
+            )
+            meta["oov_eval"] = {"path": str(artifacts_dir / "oov_metrics.json"), "holdout_sources": list(oov_report.get("per_holdout_source", {}))}
+        except Exception as exc:
+            meta["oov_eval"] = {"error": str(exc)}
+
+    metrics_payload = json.loads((artifacts_dir / "metrics.json").read_text(encoding="utf-8"))
+    metrics_payload["val_metrics_per_model"] = val_results
+    if embedding_summary and not embedding_summary.get("skipped"):
+        metrics_payload["embedding_baseline"] = embedding_summary
+    dump_json(metrics_payload, artifacts_dir / "metrics.json")
+
     dump_json(meta, meta_path)
 
     summary = {
@@ -300,6 +352,10 @@ def run_training(
         "risk_thresholds": risk,
         "artifacts_dir": str(artifacts_dir),
     }
+    if embedding_summary:
+        summary["embedding_baseline"] = embedding_summary
+    if oov_report:
+        summary["oov_eval"] = oov_report.get("per_holdout_source")
     return summary
 
 

@@ -59,6 +59,16 @@ EMNLP17_LEXICON_FILES = (
     "expansions.json",
 )
 
+# --- Out-of-domain evaluation ---
+OOV_TRAIN_SOURCES = ("reddit",)
+OOV_TEST_SOURCES = ("depression_text_clf", "sentiment", "urdu")
+AUTO_REBUILD_DATA = True
+
+# --- Sentence embedding baseline (optional; requires sentence-transformers) ---
+EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+TRAIN_EMBEDDING_BASELINE = True
+EMBEDDING_BATCH_SIZE = 64
+
 # --- Ethics / documentation (written into artifacts/dataset_meta.json) ---
 LABEL_DISCLAIMER = (
     "Labels reflect dataset authors / heuristics (e.g. Reddit self-report or Kaggle crowdsourcing), "

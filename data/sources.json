@@ -16,6 +16,7 @@
       "text_column": "text",
       "label_column": "label",
       "label_type": "binary_numeric",
+      "min_chars": 12,
       "required": false,
       "notes": "Short English snippets with binary label (~1.5k rows)."
     },

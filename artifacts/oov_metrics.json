@@ -1,0 +1,69 @@
+{
+  "protocol": "train_on_sources_test_on_others",
+  "train_sources": [
+    "reddit"
+  ],
+  "test_sources": [
+    "depression_text_clf",
+    "sentiment",
+    "urdu"
+  ],
+  "train_pool_rows": 7413,
+  "val_fraction": 0.15,
+  "in_domain_refit_val": {
+    "f1": 0.9477413640389726,
+    "f2": 0.9533143264433357,
+    "precision": 0.9385964912280702,
+    "recall": 0.9570661896243292,
+    "roc_auc": 0.9870409249272952,
+    "pr_auc": 0.9886741340944255
+  },
+  "in_domain_full_pool_test_tfidf": {
+    "f1": 0.9920964501004689,
+    "f2": 0.9929743644749545,
+    "precision": 0.9906367041198502,
+    "recall": 0.9935605044271532,
+    "roc_auc": 0.999137557158312,
+    "pr_auc": 0.9992286261550489
+  },
+  "embedding_val": {
+    "f1": 0.94874022589053,
+    "f2": 0.9653465346534653,
+    "precision": 0.9222972972972973,
+    "recall": 0.9767441860465116,
+    "roc_auc": 0.9912624908209247,
+    "pr_auc": 0.9921268711928107
+  },
+  "per_holdout_source": {
+    "depression_text_clf": {
+      "rows": 234,
+      "positives": 113,
+      "tfidf_linear_svc": {
+        "f1": 0.42424242424242425,
+        "f2": 0.3472222222222222,
+        "precision": 0.6730769230769231,
+        "recall": 0.30973451327433627,
+        "roc_auc": 0.6223945001097053,
+        "pr_auc": 0.5956435698393727
+      },
+      "embedding_minilm": {
+        "f1": 0.61003861003861,
+        "f2": 0.6605351170568562,
+        "precision": 0.541095890410959,
+        "recall": 0.6991150442477876,
+        "roc_auc": 0.6420683098076501,
+        "pr_auc": 0.6684161769641281
+      }
+    },
+    "sentiment": {
+      "status": "skipped",
+      "reason": "not_in_db_or_too_few_rows",
+      "rows": 0
+    },
+    "urdu": {
+      "status": "skipped",
+      "reason": "not_in_db_or_too_few_rows",
+      "rows": 0
+    }
+  }
+}

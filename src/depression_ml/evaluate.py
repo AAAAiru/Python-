@@ -144,6 +144,50 @@ def best_threshold_fbeta(y_true, y_score, beta: float = 2.0) -> float:
     return best_t
 
 
+def derive_risk_thresholds(
+    y_true,
+    y_score,
+    *,
+    low_default: float = 0.35,
+    high_default: float = 0.70,
+    neg_quantile: float = 0.92,
+    pos_quantile: float = 0.12,
+) -> dict[str, float]:
+    """Derive low/medium/high cutoffs from validation scores (class-conditional quantiles).
+
+    ``low``: upper bound for 低风险 — most validation negatives fall below this.
+    ``high``: lower bound for 高风险 — most validation positives fall above this.
+    """
+    y = np.asarray(y_true)
+    p = np.asarray(y_score, dtype=float)
+    neg = p[y == 0]
+    pos = p[y == 1]
+
+    thr_f2 = best_threshold_fbeta(y, p, beta=2.0)
+
+    if len(neg) >= 10:
+        low = float(np.quantile(neg, neg_quantile))
+        low = float(np.clip(low, 0.28, low_default))
+    else:
+        low = float(low_default)
+
+    if len(pos) >= 10:
+        high = float(np.quantile(pos, pos_quantile))
+        high = float(np.clip(high, high_default, 0.88))
+    else:
+        high = float(high_default)
+
+    if low >= high - 0.08:
+        low, high = float(low_default), float(high_default)
+
+    return {
+        "low": low,
+        "high": high,
+        "operating_threshold": thr_f2,
+        "derived_from": "class_conditional_quantiles",
+    }
+
+
 def dump_json(obj: Any, path: Path) -> None:
     path.write_text(json.dumps(obj, indent=2), encoding="utf-8")
 

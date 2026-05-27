@@ -9,6 +9,7 @@ from typing import Any, Tuple
 import joblib
 import numpy as np
 
+from . import config
 from .features import vectorize_single
 from .preprocess import preprocess_text_en
 from .probability_calibrate import apply_platt, load_platt_optional
@@ -17,8 +18,24 @@ from .probability_calibrate import apply_platt, load_platt_optional
 def load_risk_thresholds(artifacts_dir: Path) -> dict[str, float]:
     path = artifacts_dir / "risk_thresholds.json"
     if not path.exists():
-        return {"low": 0.35, "high": 0.70, "operating_threshold": 0.5}
-    return json.loads(path.read_text(encoding="utf-8"))
+        return {"low": config.RISK_LOW_DEFAULT, "high": config.RISK_HIGH_DEFAULT, "operating_threshold": 0.5}
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    return normalize_risk_thresholds(raw)
+
+
+def normalize_risk_thresholds(thresholds: dict[str, float]) -> dict[str, float]:
+    """Fix pathological tertiles (e.g. low≈0.04, high≈0.97) that mark almost everything as medium."""
+    low = float(thresholds.get("low", config.RISK_LOW_DEFAULT))
+    high = float(thresholds.get("high", config.RISK_HIGH_DEFAULT))
+    if low < 0.15 and high > 0.90:
+        low = config.RISK_LOW_DEFAULT
+        high = config.RISK_HIGH_DEFAULT
+    if low >= high:
+        low, high = config.RISK_LOW_DEFAULT, config.RISK_HIGH_DEFAULT
+    out = dict(thresholds)
+    out["low"] = low
+    out["high"] = high
+    return out
 
 
 def depression_probability(
@@ -42,7 +59,8 @@ def depression_probability(
 
 
 def risk_tier(prob: float, thresholds: dict[str, float]) -> str:
-    low, high = float(thresholds.get("low", 0.35)), float(thresholds.get("high", 0.70))
+    thr = normalize_risk_thresholds(thresholds)
+    low, high = float(thr["low"]), float(thr["high"])
     if prob < low:
         return "低风险"
     if prob > high:
