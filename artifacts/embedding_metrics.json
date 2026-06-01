@@ -1,0 +1,12 @@
+{
+  "model_name": "sentence-transformers/all-MiniLM-L6-v2",
+  "operating_threshold": 0.0804912918579521,
+  "val_metrics": {
+    "f1": 0.9344773790951638,
+    "f2": 0.9577870163095619,
+    "precision": 0.8980509745127436,
+    "recall": 0.9739837398373984,
+    "roc_auc": 0.9863964649498712,
+    "pr_auc": 0.9885650502709624
+  }
+}

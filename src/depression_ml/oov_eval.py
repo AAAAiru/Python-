@@ -1,0 +1,230 @@
+"""Out-of-domain evaluation: train on in-domain sources, test on held-out sources."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+import pandas as pd
+
+
+def _log(msg: str) -> None:
+    print(msg, flush=True)
+from sklearn.calibration import CalibratedClassifierCV
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.svm import LinearSVC
+
+from . import config
+from .data_db import load_all_samples
+from .embedding_baseline import predict_embedding_proba, train_embedding_classifier
+from .evaluate import best_threshold_fbeta, dump_json, evaluate_binary
+from .features import fit_tfidf, vectorize_text_stats
+from .labels import binary_labels
+from .preprocess import preprocess_text_en
+
+
+def _prepare_frame(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    out["text_clean"] = out["text_raw"].map(preprocess_text_en)
+    return out
+
+
+def _fit_tfidf_linear_svc(
+    tr: pd.DataFrame,
+    va: pd.DataFrame,
+    y_tr: np.ndarray,
+    y_va: np.ndarray,
+) -> tuple[Any, Any, Any, float, dict[str, float]]:
+    vectorizer = fit_tfidf(tr["text_clean"])
+    scaler = StandardScaler(with_mean=False)
+    X_tr = vectorize_text_stats(vectorizer, scaler, tr["text_clean"], fit_scaler=True)
+    X_va = vectorize_text_stats(vectorizer, scaler, va["text_clean"], fit_scaler=False)
+
+    model = CalibratedClassifierCV(
+        LinearSVC(class_weight="balanced", dual="auto", max_iter=20000, random_state=config.RANDOM_STATE),
+        method="sigmoid",
+        cv=3,
+    )
+    model.fit(X_tr, y_tr)
+    p_va = model.predict_proba(X_va)[:, 1]
+    thr = best_threshold_fbeta(y_va, p_va, beta=2.0)
+    pred_va = (p_va >= thr).astype(int)
+    val_metrics = evaluate_binary(y_va, pred_va, p_va)
+    return vectorizer, scaler, model, thr, val_metrics
+
+
+def _score_tfidf(
+    model: Any,
+    vectorizer: Any,
+    scaler: Any,
+    texts: pd.Series,
+    threshold: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    X = vectorize_text_stats(vectorizer, scaler, texts, fit_scaler=False)
+    p = model.predict_proba(X)[:, 1]
+    return p, (p >= threshold).astype(int)
+
+
+def run_oov_eval(
+    *,
+    data_dir: Path | None = None,
+    artifacts_dir: Path | None = None,
+    train_sources: tuple[str, ...] | None = None,
+    test_sources: tuple[str, ...] | None = None,
+    with_embeddings: bool = True,
+    val_fraction: float = 0.15,
+) -> dict[str, Any]:
+    """Train on OOV_TRAIN_SOURCES, evaluate per held-out source in OOV_TEST_SOURCES."""
+    data_dir = data_dir or config.DATA_DIR
+    artifacts_dir = artifacts_dir or config.ARTIFACTS_DIR
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+    train_sources = train_sources or config.OOV_TRAIN_SOURCES
+    test_sources = test_sources or config.OOV_TEST_SOURCES
+
+    all_df = load_all_samples(data_dir)
+    if "source_id" not in all_df.columns:
+        raise ValueError("Database samples missing source_id column; rebuild with build_merged_dataset().")
+
+    train_pool = all_df[all_df["source_id"].isin(train_sources)].reset_index(drop=True)
+    if len(train_pool) < 40:
+        raise ValueError(f"Only {len(train_pool)} in-domain rows for OOV train sources {train_sources}")
+
+    _log(f"[oov] in-domain train pool: {len(train_pool)} rows from {list(train_sources)}")
+
+    train_pool = _prepare_frame(train_pool)
+    y_pool = binary_labels(train_pool, config.POSITIVE_LABELS)
+    idx = np.arange(len(train_pool))
+    tr_idx, va_idx = train_test_split(
+        idx,
+        test_size=val_fraction,
+        random_state=config.RANDOM_STATE,
+        stratify=y_pool,
+    )
+    tr = train_pool.iloc[tr_idx].reset_index(drop=True)
+    va = train_pool.iloc[va_idx].reset_index(drop=True)
+    y_tr, y_va = y_pool[tr_idx], y_pool[va_idx]
+
+    _log("[oov] fitting TF-IDF + calibrated LinearSVC on in-domain pool...")
+    vec, scaler, tfidf_model, tfidf_thr, tfidf_val = _fit_tfidf_linear_svc(tr, va, y_tr, y_va)
+
+    emb_clf = emb_scaler = None
+    emb_thr = 0.5
+    emb_val: dict[str, float] = {}
+    if with_embeddings:
+        try:
+            _log(f"[oov] fitting embedding baseline ({config.EMBEDDING_MODEL_NAME})...")
+            emb_clf, emb_scaler, emb_val, emb_thr = train_embedding_classifier(
+                tr["text_clean"], y_tr, va["text_clean"], y_va
+            )
+        except ImportError as exc:
+            with_embeddings = False
+            emb_val = {"error": str(exc)}
+
+    per_source: dict[str, Any] = {}
+    for src in test_sources:
+        holdout = all_df[all_df["source_id"] == src]
+        if len(holdout) < 5:
+            per_source[src] = {"status": "skipped", "reason": "not_in_db_or_too_few_rows", "rows": len(holdout)}
+            _log(f"[oov]   holdout {src}: skipped (rows={len(holdout)})")
+            continue
+        holdout = _prepare_frame(holdout.reset_index(drop=True))
+        y_te = binary_labels(holdout, config.POSITIVE_LABELS)
+        entry: dict[str, Any] = {"rows": len(holdout), "positives": int(y_te.sum())}
+
+        p_tf, pred_tf = _score_tfidf(tfidf_model, vec, scaler, holdout["text_clean"], tfidf_thr)
+        entry["tfidf_linear_svc"] = evaluate_binary(y_te, pred_tf, p_tf)
+
+        if with_embeddings and emb_clf is not None and emb_scaler is not None:
+            p_emb = predict_embedding_proba(holdout["text_clean"], emb_clf, emb_scaler)
+            pred_emb = (p_emb >= emb_thr).astype(int)
+            entry["embedding_minilm"] = evaluate_binary(y_te, pred_emb, p_emb)
+
+        per_source[src] = entry
+        tf2 = entry.get("tfidf_linear_svc", {}).get("f2")
+        ef2 = (entry.get("embedding_minilm") or {}).get("f2")
+        msg = f"[oov]   holdout {src}: rows={entry['rows']}"
+        if tf2 is not None:
+            msg += f" tfidf F2={tf2:.4f}"
+        if ef2 is not None:
+            msg += f" emb F2={ef2:.4f}"
+        _log(msg)
+
+    in_domain_test = all_df[all_df["source_id"].isin(train_sources)]
+    in_domain_test = _prepare_frame(in_domain_test.reset_index(drop=True))
+    y_in = binary_labels(in_domain_test, config.POSITIVE_LABELS)
+    p_in, pred_in = _score_tfidf(tfidf_model, vec, scaler, in_domain_test["text_clean"], tfidf_thr)
+    in_domain_metrics = evaluate_binary(y_in, pred_in, p_in)
+
+    report = {
+        "protocol": "train_on_sources_test_on_others",
+        "train_sources": list(train_sources),
+        "test_sources": list(test_sources),
+        "train_pool_rows": len(train_pool),
+        "val_fraction": val_fraction,
+        "in_domain_refit_val": tfidf_val,
+        "in_domain_full_pool_test_tfidf": in_domain_metrics,
+        "embedding_val": emb_val if with_embeddings else {"skipped": True},
+        "per_holdout_source": per_source,
+    }
+    dump_json(report, artifacts_dir / "oov_metrics.json")
+    return report
+
+
+def save_oov_report(report: dict[str, Any], artifacts_dir: Path) -> None:
+    """Write CSV + bar chart comparing TF-IDF vs embedding on each holdout source."""
+    from .evaluate import plot_model_bar
+
+    rows: list[dict[str, Any]] = []
+    per = report.get("per_holdout_source") or {}
+    for src, entry in per.items():
+        if entry.get("status") == "skipped":
+            rows.append({"source": src, "status": "skipped", "rows": entry.get("rows", 0)})
+            continue
+        base = {"source": src, "rows": entry["rows"], "positives": entry.get("positives")}
+        tf = entry.get("tfidf_linear_svc") or {}
+        rows.append(
+            {
+                **base,
+                "model": "tfidf_linear_svc",
+                "f2": tf.get("f2"),
+                "recall": tf.get("recall"),
+                "f1": tf.get("f1"),
+                "roc_auc": tf.get("roc_auc"),
+            }
+        )
+        emb = entry.get("embedding_minilm") or {}
+        if emb and "f2" in emb:
+            rows.append(
+                {
+                    **base,
+                    "model": "embedding_minilm",
+                    "f2": emb.get("f2"),
+                    "recall": emb.get("recall"),
+                    "f1": emb.get("f1"),
+                    "roc_auc": emb.get("roc_auc"),
+                }
+            )
+
+    df = pd.DataFrame(rows)
+    csv_path = artifacts_dir / "oov_compare_table.csv"
+    df.to_csv(csv_path, index=False, encoding="utf-8")
+
+    tfidf_bar = {}
+    emb_bar = {}
+    for src, entry in per.items():
+        if entry.get("status") == "skipped":
+            continue
+        tf = entry.get("tfidf_linear_svc") or {}
+        if "f2" in tf:
+            tfidf_bar[src] = {"f2": float(tf["f2"])}
+        emb = entry.get("embedding_minilm") or {}
+        if emb and "f2" in emb:
+            emb_bar[src] = {"f2": float(emb["f2"])}
+
+    if tfidf_bar:
+        plot_model_bar(tfidf_bar, artifacts_dir / "oov_tfidf_f2_by_source.png", metric="f2")
+    if emb_bar:
+        plot_model_bar(emb_bar, artifacts_dir / "oov_embedding_f2_by_source.png", metric="f2")

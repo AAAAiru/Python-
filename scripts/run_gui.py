@@ -44,11 +44,13 @@ class DepressionDetectorGUI:
         self.root = root
         self.artifacts_dir = artifacts_dir
         self.root.title("Depression tendency screening (course demo)")
-        self.root.geometry("760x620")
+        self.root.geometry("780x680")
 
         win_bg = "#ececec"
         text_bg = "#ffffff"
         text_fg = "#101010"
+        self._win_bg = win_bg
+        self._text_fg = text_fg
         self.root.configure(bg=win_bg)
 
         from depression_ml.risk import load_artifacts
@@ -67,26 +69,59 @@ class DepressionDetectorGUI:
         )
         result_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=16, pady=8)
 
+        result_toolbar = tk.Frame(result_frame, bg=win_bg)
+        result_toolbar.pack(fill=tk.X, pady=(0, 8))
+        tk.Label(
+            result_toolbar,
+            text="After each test, reset here — no need to restart from terminal:",
+            font=_font_body(),
+            bg=win_bg,
+            fg="#555555",
+        ).pack(side=tk.LEFT)
+        reset_bar = tk.Frame(result_toolbar, bg="#1565C0", cursor="hand2")
+        reset_bar.pack(side=tk.RIGHT)
+        reset_lbl = tk.Label(
+            reset_bar,
+            text="一键归零",
+            bg="#1565C0",
+            fg="#ffffff",
+            font=_font_heading(),
+            padx=18,
+            pady=6,
+        )
+        reset_lbl.pack()
+        reset_bar.bind("<Button-1>", lambda _e: self.reset_demo())
+        reset_lbl.bind("<Button-1>", lambda _e: self.reset_demo())
+
         self.risk_label = tk.Label(result_frame, text="Waiting…", font=_font_heading()[:2] + ("normal",), bg=win_bg, fg=text_fg)
         self.risk_label.pack(pady=4)
+
+        self.conf_label = tk.Label(result_frame, text="", font=_font_body(), bg=win_bg, fg="#555555")
+        self.conf_label.pack(pady=2)
 
         self.prob_label = tk.Label(result_frame, text="", font=_font_body(), bg=win_bg, fg=text_fg)
         self.prob_label.pack(pady=2)
 
         self.advice_label = tk.Label(
-            result_frame, text="", font=_font_body(), wraplength=680, justify=tk.LEFT, bg=win_bg, fg=text_fg
+            result_frame, text="", font=_font_body(), wraplength=700, justify=tk.LEFT, bg=win_bg, fg=text_fg
         )
-        self.advice_label.pack(pady=8)
+        self.advice_label.pack(pady=6)
+
+        self.note_label = tk.Label(
+            result_frame, text="", font=_font_body(), wraplength=700, justify=tk.LEFT, bg=win_bg, fg="#666666"
+        )
+        self.note_label.pack(pady=2)
 
         self.lex_label = tk.Label(
             result_frame,
             text="",
             font=_font_body(),
-            wraplength=680,
+            wraplength=700,
             justify=tk.LEFT,
             bg=win_bg,
             fg="#555555",
         )
+        self.lex_label.config(text="Run an assessment to see lexicon explainability cues here.")
         self.lex_label.pack(pady=4)
 
         body = tk.Frame(self.root, bg=win_bg)
@@ -97,16 +132,22 @@ class DepressionDetectorGUI:
 
         desc = tk.Label(
             body,
-            text="Educational demo only — not a medical device. English social-media style text works best.",
+            text=(
+                "Educational demo only — not a medical device. "
+                "Double-click 启动抑郁症筛查Demo.bat to open (once). "
+                "Then: paste text → Run assessment → 一键归零 in the Result panel for the next case."
+            ),
             font=_font_body(),
-            wraplength=700,
+            wraplength=720,
             bg=win_bg,
             fg=text_fg,
         )
         desc.pack(pady=4)
 
-        text_label = tk.Label(body, text="Paste text to analyse:", font=_font_body(), bg=win_bg, fg=text_fg)
-        text_label.pack(anchor=tk.W, padx=16, pady=(16, 4))
+        input_row = tk.Frame(body, bg=win_bg)
+        input_row.pack(fill=tk.X, padx=16, pady=(16, 4))
+        text_label = tk.Label(input_row, text="Paste text to analyse:", font=_font_body(), bg=win_bg, fg=text_fg)
+        text_label.pack(side=tk.LEFT)
 
         self.text_input = scrolledtext.ScrolledText(
             body,
@@ -122,26 +163,41 @@ class DepressionDetectorGUI:
         )
         self.text_input.pack(padx=16, pady=4, fill=tk.BOTH, expand=True)
 
-        btn_bar = tk.Frame(body, bg="#2E7D32", cursor="hand2")
-        btn_bar.pack(pady=12)
-        btn_lbl = tk.Label(
-            btn_bar,
+        run_bar = tk.Frame(input_row, bg="#2E7D32", cursor="hand2")
+        run_bar.pack(side=tk.RIGHT)
+        run_lbl = tk.Label(
+            run_bar,
             text="Run assessment",
             bg="#2E7D32",
             fg="#ffffff",
             font=_font_heading(),
-            padx=28,
-            pady=10,
+            padx=20,
+            pady=6,
         )
-        btn_lbl.pack()
-        btn_bar.bind("<Button-1>", lambda _e: self.predict())
-        btn_lbl.bind("<Button-1>", lambda _e: self.predict())
+        run_lbl.pack()
+        run_bar.bind("<Button-1>", lambda _e: self.predict())
+        run_lbl.bind("<Button-1>", lambda _e: self.predict())
+
+        self.root.bind("<Escape>", lambda _e: self.reset_demo())
+        self.root.bind("<Control-Return>", lambda _e: self.predict())
+
+    def reset_demo(self) -> None:
+        """Clear input and restore the result panel to the initial waiting state."""
+        self.text_input.delete("1.0", tk.END)
+        self.risk_label.config(text="Waiting…", fg=self._text_fg)
+        self.conf_label.config(text="")
+        self.prob_label.config(text="")
+        self.advice_label.config(text="", fg=self._text_fg)
+        self.note_label.config(text="")
+        self.lex_label.config(
+            text="Run an assessment to see lexicon explainability cues here."
+        )
+        self.text_input.focus_set()
 
     def predict(self) -> None:
         from depression_ml import config
-        from depression_ml.emnlp17_signals import extract_emnlp17_detailed
-        from depression_ml.preprocess import looks_english, preprocess_text_en
-        from depression_ml.risk import depression_probability, risk_tier
+        from depression_ml.preprocess import looks_english
+        from depression_ml.risk import assess_text
 
         text = self.text_input.get("1.0", tk.END).strip()
         if not text:
@@ -150,7 +206,7 @@ class DepressionDetectorGUI:
         if len(text) < config.MIN_TEXT_CHARS:
             messagebox.showwarning(
                 "Input",
-                f"Text is too short (minimum about {config.MIN_TEXT_CHARS} characters for a stable signal).",
+                f"Text is too short (need at least {config.MIN_TEXT_CHARS} characters).",
             )
             return
         if not looks_english(text):
@@ -159,18 +215,32 @@ class DepressionDetectorGUI:
                 "The text does not look predominantly English. This demo is tuned for English social-media style posts.",
             )
             return
+
+        if len(text) < config.MIN_TEXT_CHARS_SOFT:
+            if not messagebox.askyesno(
+                "Short text",
+                f"This snippet is under {config.MIN_TEXT_CHARS_SOFT} characters. "
+                "Scores are unreliable for very short posts. Continue anyway?",
+            ):
+                return
+
         try:
-            clean = preprocess_text_en(text)
-            det = extract_emnlp17_detailed(
-                clean,
-                collect_matches=True,
-                match_limit=config.GUI_LEXICON_PREVIEW,
+            result = assess_text(
+                text,
+                self.artifacts_dir,
+                model=self.model,
+                vectorizer=self.vectorizer,
+                scaler=self.scaler,
+                thresholds=self.thresholds,
+                platt=self.platt,
             )
-            prob = depression_probability(text, self.model, self.vectorizer, self.scaler, self.platt)
-            tier = risk_tier(prob, self.thresholds)
         except Exception as exc:  # noqa: BLE001
             messagebox.showerror("Error", f"Prediction failed: {exc}")
             return
+
+        tier = result.tier
+        prob = result.prob
+        det = result.lex
 
         if tier == "低风险":
             color = "green"
@@ -182,11 +252,26 @@ class DepressionDetectorGUI:
             color = "red"
             advice = "Strong distress cues in text. If you or someone else may self-harm, contact local emergency services or a crisis hotline immediately."
 
+        if result.confidence == "低":
+            advice += " (Short or sparse text — treat the score as indicative only.)"
+
         self.risk_label.config(text=f"Risk tier: {tier}", fg=color)
+        self.conf_label.config(text=f"Confidence: {result.confidence}  |  {result.word_count} words, {result.char_len} chars")
+
+        model_note = ""
+        if result.model_tier != tier:
+            model_note = f"  |  model-only tier was {result.model_tier}"
         self.prob_label.config(
-            text=f"Model score (depression-positive, Platt-calibrated if trained): {prob:.2%}"
+            text=(
+                f"Score (depression-positive): {prob:.2%}"
+                f"{model_note}"
+                f"  |  VADER sentiment: {result.sentiment_compound:+.2f}"
+            )
         )
-        self.advice_label.config(text=advice, fg=color)
+        self.advice_label.config(text=advice, fg=color if tier != "中风险" else "#8B4513")
+
+        note = result.flag_notes_zh
+        self.note_label.config(text=note if note else "")
 
         def _fmt(name: str, xs: list) -> str:
             if not xs:
@@ -195,11 +280,13 @@ class DepressionDetectorGUI:
 
         self.lex_label.config(
             text=(
-                "Lexicon (EMNLP’17 user_selection, explainability only)\n"
-                f"Counts — MH={int(det['emnlp_mh_hits'])}, pos_diag≈{int(det['emnlp_pos_diag'])}, neg_diag≈{int(det['emnlp_neg_diag'])}\n"
+                "Lexicon (Georgetown emnlp17-depression / user_selection — explainability only)\n"
+                f"Counts — MH={int(det['emnlp_mh_hits'])}, pos_diag≈{int(det['emnlp_pos_diag'])}, neg_diag≈{int(det['emnlp_neg_diag'])}, "
+                f"sub_word={int(det['emnlp_subreddit_word_hits'])}, sub_r={int(det['emnlp_subreddit_r_hits'])}\n"
                 f"{_fmt('MH terms', det['mh_matches'])}\n"
                 f"{_fmt('Pos phrases', det['pos_matches'])}\n"
-                f"{_fmt('Neg phrases', det['neg_matches'])}"
+                f"{_fmt('Neg phrases', det['neg_matches'])}\n"
+                f"{_fmt('Subreddits', det['subreddit_matches'])}"
             )
         )
 

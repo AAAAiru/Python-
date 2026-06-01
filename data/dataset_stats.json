@@ -1,0 +1,60 @@
+{
+  "mode": "merged_sources",
+  "import_report": {
+    "loaded": [
+      {
+        "id": "reddit",
+        "file": "depression_dataset_reddit_cleaned.csv",
+        "rows": 7413,
+        "positives": 3727
+      },
+      {
+        "id": "depression_text_clf",
+        "file": "depression-classification-text-dataset.csv",
+        "rows": 234,
+        "positives": 113
+      }
+    ],
+    "skipped": [
+      {
+        "id": "sentiment",
+        "expected": "combined_data.csv",
+        "alt_files": [
+          "Combined Data.csv",
+          "sentiment_combined_data.csv"
+        ],
+        "reason": "file_not_found"
+      },
+      {
+        "id": "urdu",
+        "expected": "urdu_depression_dataset.csv",
+        "alt_files": [],
+        "reason": "file_not_found"
+      }
+    ],
+    "missing_required": [],
+    "rows_merged": 7647,
+    "label_counts": {
+      "1": 3840,
+      "0": 3807
+    }
+  },
+  "rows_after_merge": 7647,
+  "rows_after_split_total": 7647,
+  "min_chars": 20,
+  "splits": {
+    "train": 4893,
+    "val": 1224,
+    "test": 1530
+  },
+  "per_source_in_db": {
+    "depression_text_clf": 234,
+    "reddit": 7413
+  },
+  "label_counts": {
+    "1": 3840,
+    "0": 3807
+  },
+  "built_at": "2026-05-27T00:07:46.777428+00:00",
+  "label_disclaimer": "Labels reflect dataset authors / heuristics (e.g. Reddit self-report or Kaggle crowdsourcing), not clinical diagnosis. Do not use outputs for medical decisions or crisis triage."
+}

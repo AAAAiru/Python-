@@ -1,0 +1,47 @@
+{
+  "description": "Place Kaggle exports in data/ using the file names below, then run: python scripts/build_dataset.py --all-sources",
+  "sources": [
+    {
+      "id": "reddit",
+      "file": "depression_dataset_reddit_cleaned.csv",
+      "text_column": "clean_text",
+      "label_column": "is_depression",
+      "label_type": "binary_numeric",
+      "required": true,
+      "notes": "Already in repo."
+    },
+    {
+      "id": "depression_text_clf",
+      "file": "depression-classification-text-dataset.csv",
+      "text_column": "text",
+      "label_column": "label",
+      "label_type": "binary_numeric",
+      "min_chars": 12,
+      "required": false,
+      "notes": "Short English snippets with binary label (~1.5k rows)."
+    },
+    {
+      "id": "sentiment",
+      "file": "combined_data.csv",
+      "alt_files": ["Combined Data.csv", "sentiment_combined_data.csv"],
+      "text_column": "statement",
+      "label_column": "status",
+      "label_type": "mental_health_status",
+      "kaggle_slug": "suchintikasarkar/sentiment-analysis-for-mental-health",
+      "kaggle_inner_path": "Combined Data.csv",
+      "required": false,
+      "notes": "From sentiment-analysis-for-mental-health.ipynb (~53k rows)."
+    },
+    {
+      "id": "urdu",
+      "file": "urdu_depression_dataset.csv",
+      "text_columns": ["text_english", "text_roman"],
+      "label_column": "depression_label",
+      "label_type": "urdu_severity",
+      "kaggle_slug": "alitaqishah/urdu-depression-severity-dataset-2024-2025",
+      "kaggle_inner_path": "urdu_depression_dataset.csv",
+      "required": false,
+      "notes": "Uses English column when present; severity 1–3 → positive class. ~4k rows."
+    }
+  ]
+}

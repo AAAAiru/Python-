@@ -1,0 +1,32 @@
+{
+  "task": "in_domain_model_compare",
+  "data_note": "SQLite: depression.db (train=4893, val=1224, test=1530)",
+  "positive_labels": [
+    "Depression"
+  ],
+  "tfidf_full_linear_svc": {
+    "feature_set": "tfidf_full",
+    "val_metrics": {
+      "f1": 0.9270913277052955,
+      "f2": 0.9593392630241423,
+      "precision": 0.877906976744186,
+      "recall": 0.9821138211382113,
+      "roc_auc": 0.9869277904601708,
+      "pr_auc": 0.9897942306150619
+    },
+    "test_metrics": {
+      "f1": 0.9207317073170732,
+      "f2": 0.9571501014198783,
+      "precision": 0.8658256880733946,
+      "recall": 0.9830729166666666,
+      "roc_auc": 0.9907282097550306,
+      "pr_auc": 0.9920447846202767
+    },
+    "operating_threshold": 0.21110672266520905
+  },
+  "embedding_minilm": {
+    "skipped": true,
+    "reason": "sentence-transformers is required for the embedding baseline. Install with: pip install sentence-transformers"
+  },
+  "winner_test_f2": "tfidf_full_linear_svc"
+}

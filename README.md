@@ -62,6 +62,28 @@ Kaggle：<https://www.kaggle.com/datasets/maazkareem/sentiment-and-mental-health
 
 若 `data/` 下没有任何 CSV，训练脚本会自动生成 `synthetic_train.csv` / `synthetic_test.csv` 以便连通性自检（指标无科研意义，仅用于验收管道）。
 
+### D. 本地数据库（推荐）
+
+按 `data/sources.json` **合并多源 CSV** 构建 SQLite（`data/depression.db`）及固定 **train / val / test** 划分：
+
+```bash
+python scripts/build_dataset.py --list-sources
+python scripts/build_dataset.py --all-sources
+```
+
+可选 Kaggle 数据（下载后放入 `data/`，见 `data/README.md`）：
+
+- `combined_data.csv` — *sentiment-analysis-for-mental-health*
+- `urdu_depression_dataset.csv` — *urdu-depression-severity-dataset-2024-2025*
+
+仅 Reddit 单文件：
+
+```bash
+python scripts/build_dataset.py --source data/depression_dataset_reddit_cleaned.csv
+```
+
+生成：`depression.db`、`train|val|test.csv`、`dataset_stats.json`（含各 `source_id` 行数）。训练优先读库。
+
 ## 3. 训练
 
 ```bash
@@ -75,6 +97,87 @@ python scripts/run_train.py
 - `--data-dir`、`--artifacts-dir`：自定义路径。
 
 训练结束后查看 `artifacts/metrics.json` 与各类 `*.png` 曲线图。
+
+## 3.1 特征消融与划分对比
+
+对比 **TF-IDF 单独 / +VADER / +EMNLP 全特征**，并在存在多数据源（`depression.db` 含 2 个以上 `source_id`）时比较：
+
+- **stratified_row**：按行分层随机划分（与默认建库一致）
+- **group_by_source**：按数据源整组划分，减轻同源泄漏
+
+```bash
+python scripts/run_ablation.py
+```
+
+输出：`artifacts/ablation_report.json`、`ablation_table.csv`、`ablation_test_f2.png`（及可选 `ablation_split_protocol_f2.png`）。
+
+## 3.2 任务 2：嵌入基线 + 跨域（OOV）评估
+
+在同一 **train/val/test** 上对比：
+
+- **TF-IDF 全特征** + 校准 `LinearSVC`
+- **MiniLM 句向量** + 逻辑回归（`sentence-transformers`）
+
+并在 `depression.db` 存在多源时做 **OOV**：默认仅在 **reddit** 上训练，在 `depression_text_clf` / `sentiment` / `urdu` 等源上测试泛化。
+
+```bash
+pip install sentence-transformers   # 若尚未安装
+python scripts/run_task2.py
+```
+
+**国内访问 Hugging Face 超时（WinError 10060）** 时任选其一：
+
+```powershell
+# 方法 A：镜像（推荐，当前终端有效）
+$env:HF_ENDPOINT = "https://hf-mirror.com"
+$env:HF_HUB_DOWNLOAD_TIMEOUT = "300"
+python -u scripts/run_task2.py
+
+# 或一键脚本
+.\scripts\run_task2_mirror.ps1
+```
+
+```powershell
+# 方法 B：先离线下载到 models/all-MiniLM-L6-v2，再跑 task2
+$env:HF_ENDPOINT = "https://hf-mirror.com"
+python scripts/download_embedding_model.py
+python -u scripts/run_task2.py
+```
+
+```powershell
+# 方法 C：暂时不做 embedding，仍可完成 TF-IDF + OOV
+python -u scripts/run_task2.py --no-embeddings
+```
+
+可选：
+
+- `--in-domain-only` / `--no-oov`：只做同分布对比，更快  
+- `--no-embeddings`：跳过句向量（仅 TF-IDF）
+
+输出：
+
+| 文件 | 含义 |
+|------|------|
+| `artifacts/model_compare_table.csv` | 同分布 Test F2 / 召回对比 |
+| `artifacts/model_compare_test_f2.png` | 柱状图 |
+| `artifacts/oov_metrics.json` | 跨源详细指标 |
+| `artifacts/oov_compare_table.csv` | 各 holdout 源 × 模型 |
+| `artifacts/task2_summary.json` | 汇总 |
+
+单独跑 OOV：`python scripts/run_oov_eval.py`
+
+## 3.3 GUI（短句 / 积极句防误判）
+
+**推荐（只需打开一次，不用每次测都开终端）：**
+
+- Windows：双击项目根目录 **`启动抑郁症筛查Demo.bat`**
+- 或命令行：`python scripts/run_gui.py`
+
+**演示流程：** 粘贴文本 → **Run assessment** → 测下一条时点结果区 **「一键归零」**（`Esc` 快捷键），无需关掉窗口或重跑终端。
+
+- 极短文本会提示「置信度低」，并在无心理词典命中时**限制最高档位**。
+- 明显积极表述（VADER、积极词、词典）且分数较低时，**下调至低风险**（界面会注明规则说明）。
+- 若模型档位与展示档位不一致，会显示 `model-only tier was …`。
 
 ## 4. Jupyter
 
@@ -108,7 +211,7 @@ pytest
 ## 6. 任务与模型
 
 - 预处理：英文小写、去 URL、非字母清洗（`preprocess.py`）；可选 **拉丁字母占比** 启发式（`looks_english`，阈值见 `config.py`）。
-- 特征：`TF-IDF`（稀疏矩阵）+ 词长/词数等统计量 + **VADER** 情感复合分 + **EMNLP’17 参考词典** 命中特征（`emnlp17_signals.py` / `features.py`），`StandardScaler(with_mean=False)`。
+- 特征：`TF-IDF`（稀疏矩阵）+ 词长/词数等统计量 + **VADER** 情感复合分 + **Georgetown `emnlp17-depression` 仓库中 `user_selection/`** 资源：`mh_patterns.txt`、`mh_subreddits.txt`（子版块名 / `r/…` 风格提及）、`diagpatterns_*` + `expansions.json`（`emnlp17_signals.py` / `features.py`），`StandardScaler(with_mean=False)`。参考代码里的 **Keras 用户级 CNN**（`reference/.../model/`）依赖过旧栈，本工程未嵌入，仅用其 **词典侧** 弱特征。
 - 模型：逻辑回归、`LinearSVC`（`CalibratedClassifierCV` 概率）、随机森林、**XGBoost**（若安装失败则自动跳过）。
 - 大规模训练集：默认对 **训练子集** 做分层抽样至 `MAX_TRAIN_ROWS`（见 `config.py`），验证集与官方测试集仍全量用于评估，以控制笔记本/普通电脑的内存占用。
 - 不平衡：`RandomOverSampler` + 多数模型的 `class_weight`。

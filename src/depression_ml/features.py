@@ -25,6 +25,8 @@ STAT_FEATURE_ORDER: tuple[str, ...] = (
     "emnlp_mh_hits",
     "emnlp_pos_diag",
     "emnlp_neg_diag",
+    "emnlp_subreddit_word_hits",
+    "emnlp_subreddit_r_hits",
 )
 
 
@@ -48,6 +50,8 @@ def extract_stat_features(text: str) -> dict[str, float]:
         "emnlp_mh_hits": emnlp["emnlp_mh_hits"],
         "emnlp_pos_diag": emnlp["emnlp_pos_diag"],
         "emnlp_neg_diag": emnlp["emnlp_neg_diag"],
+        "emnlp_subreddit_word_hits": emnlp["emnlp_subreddit_word_hits"],
+        "emnlp_subreddit_r_hits": emnlp["emnlp_subreddit_r_hits"],
     }
 
 
