@@ -47,6 +47,12 @@ def main() -> None:
     ap.add_argument("--min-chars", type=int, default=None, help=f"Min cleaned length (default {config.MIN_DATASET_TEXT_CHARS})")
     ap.add_argument("--no-export-csv", action="store_true", help="Only write SQLite, skip train/val/test.csv")
     ap.add_argument("--include-non-english", action="store_true", help="Do not filter out non-English rows")
+    ap.add_argument(
+        "--split-strategy",
+        choices=("source_label", "label"),
+        default="source_label",
+        help="Stratify by source+label when feasible, or by label only.",
+    )
     ap.add_argument("--list-sources", action="store_true", help="Show which source files are present/missing")
     args = ap.parse_args()
 
@@ -68,6 +74,7 @@ def main() -> None:
             min_chars=args.min_chars,
             export_csv=not args.no_export_csv,
             english_only=not args.include_non_english,
+            split_strategy=args.split_strategy,
         )
     else:
         source = args.source or (args.data_dir / "depression_dataset_reddit_cleaned.csv")

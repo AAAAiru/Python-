@@ -34,6 +34,14 @@ def main() -> None:
         raise SystemExit(f"No text column found. Columns: {list(df.columns)}. Use --text-column.")
 
     model, vectorizer, scaler, thr, platt = load_artifacts(args.artifacts)
+    metadata_path = args.artifacts / "model_metadata.json"
+    model_version = "unknown"
+    if metadata_path.exists():
+        import json
+
+        model_version = json.loads(metadata_path.read_text(encoding="utf-8")).get(
+            "model_version", "unknown"
+        )
     probs: list[float] = []
     tiers: list[str] = []
     for raw in df[text_col].astype("string").fillna(""):
@@ -42,8 +50,9 @@ def main() -> None:
         tiers.append(risk_tier(p, thr))
 
     out = df.copy()
-    out["depression_prob_calibrated"] = probs
-    out["risk_tier_zh"] = tiers
+    out["model_score"] = probs
+    out["risk_tier"] = tiers
+    out["model_version"] = model_version
     args.output.parent.mkdir(parents=True, exist_ok=True)
     out.to_csv(args.output, index=False, encoding="utf-8")
     print(f"Wrote {len(out)} rows to {args.output}")

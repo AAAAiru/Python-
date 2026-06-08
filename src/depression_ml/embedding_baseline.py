@@ -82,6 +82,7 @@ def train_embedding_classifier(
     y_val: np.ndarray,
     *,
     model_name: str | None = None,
+    random_state: int | None = None,
 ) -> tuple[LogisticRegression, StandardScaler, dict[str, float], float]:
     """Fit LR on scaled MiniLM embeddings; tune threshold on validation F2."""
     X_tr = encode_texts(texts_train, model_name=model_name)
@@ -94,7 +95,7 @@ def train_embedding_classifier(
     clf = LogisticRegression(
         max_iter=2000,
         class_weight="balanced",
-        random_state=config.RANDOM_STATE,
+        random_state=config.RANDOM_STATE if random_state is None else random_state,
     )
     clf.fit(X_tr_s, y_train)
     p_va = clf.predict_proba(X_va_s)[:, 1]

@@ -14,6 +14,7 @@ from sklearn.model_selection import train_test_split
 from . import config
 from .io_data import DatasetBundle, _prepare_frame, _read_csv
 from .preprocess import preprocess_text_en
+from .data_quality import dataset_quality_summary, text_fingerprint
 
 
 SCHEMA_SQL = """
@@ -22,6 +23,7 @@ CREATE TABLE IF NOT EXISTS samples (
     text_raw TEXT NOT NULL,
     label_raw TEXT NOT NULL,
     text_clean TEXT NOT NULL UNIQUE,
+    text_fingerprint TEXT NOT NULL UNIQUE,
     char_len INTEGER NOT NULL,
     split_name TEXT NOT NULL CHECK (split_name IN ('train', 'val', 'test')),
     source_id TEXT NOT NULL DEFAULT 'unknown',
@@ -31,6 +33,7 @@ CREATE TABLE IF NOT EXISTS samples (
 CREATE INDEX IF NOT EXISTS idx_samples_split ON samples(split_name);
 CREATE INDEX IF NOT EXISTS idx_samples_label ON samples(label_raw);
 CREATE INDEX IF NOT EXISTS idx_samples_source ON samples(source_id);
+CREATE INDEX IF NOT EXISTS idx_samples_fingerprint ON samples(text_fingerprint);
 CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -96,6 +99,7 @@ def _write_db_and_exports(
                 str(r.text_raw),
                 str(r.label_raw),
                 str(r.text_clean),
+                str(r.text_fingerprint),
                 int(r.char_len),
                 str(r.split_name),
                 str(getattr(r, "source_id", "unknown")),
@@ -107,9 +111,9 @@ def _write_db_and_exports(
         conn.executemany(
             """
             INSERT INTO samples(
-                text_raw, label_raw, text_clean, char_len, split_name, source_id, source_file, created_at
+                text_raw, label_raw, text_clean, text_fingerprint, char_len, split_name, source_id, source_file, created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             rows,
         )
@@ -141,20 +145,34 @@ def _stratified_splits(
     val_ratio: float,
     test_ratio: float,
     random_state: int,
+    split_strategy: str = "source_label",
 ) -> pd.DataFrame:
+    source = clean.get("source_id", pd.Series("unknown", index=clean.index)).astype(str)
     y = clean["label_raw"].astype(str)
+    strata = source + "::" + y
+    counts = strata.value_counts()
+    stratify_key = (
+        strata
+        if split_strategy == "source_label" and len(counts) and int(counts.min()) >= 3
+        else y
+    )
     tr_val, te = train_test_split(
         clean,
         test_size=test_ratio,
         random_state=random_state,
-        stratify=y,
+        stratify=stratify_key,
     )
     val_rel = val_ratio / (train_ratio + val_ratio)
     tr, va = train_test_split(
         tr_val,
         test_size=val_rel,
         random_state=random_state,
-        stratify=tr_val["label_raw"].astype(str),
+        stratify=(
+            tr_val["source_id"].astype(str) + "::" + tr_val["label_raw"].astype(str)
+            if split_strategy == "source_label"
+            and (tr_val["source_id"].astype(str) + "::" + tr_val["label_raw"].astype(str)).value_counts().min() >= 2
+            else tr_val["label_raw"].astype(str)
+        ),
     )
     for name, part in (("train", tr), ("val", va), ("test", te)):
         part["split_name"] = name
@@ -172,6 +190,7 @@ def build_merged_dataset(
     random_state: int | None = None,
     export_csv: bool = True,
     english_only: bool = True,
+    split_strategy: str = "source_label",
 ) -> dict[str, Any]:
     """Merge CSVs listed in data/sources.json, split, write SQLite + train|val|test CSV."""
     from .data_import import discover_and_load
@@ -194,8 +213,21 @@ def build_merged_dataset(
     if len(merged) < 20:
         raise ValueError(f"Only {len(merged)} rows after merge; add more source CSV files.")
 
-    combined = _stratified_splits(merged, train_ratio=tr, val_ratio=vr, test_ratio=te, random_state=random_state)
+    merged["text_fingerprint"] = merged["text_clean"].map(text_fingerprint)
+    merged = merged.drop_duplicates(subset=["text_fingerprint"], keep="first").reset_index(drop=True)
+    combined = _stratified_splits(
+        merged,
+        train_ratio=tr,
+        val_ratio=vr,
+        test_ratio=te,
+        random_state=random_state,
+        split_strategy=split_strategy,
+    )
     by_source = combined.groupby("source_id").size().astype(int).to_dict() if "source_id" in combined.columns else {}
+
+    source_split_counts: dict[str, dict[str, int]] = {}
+    for (source, split), count in combined.groupby(["source_id", "split_name"]).size().items():
+        source_split_counts.setdefault(str(source), {})[str(split)] = int(count)
 
     stats_base = {
         "mode": "merged_sources",
@@ -210,6 +242,9 @@ def build_merged_dataset(
         },
         "per_source_in_db": by_source,
         "label_counts": combined["label_raw"].value_counts().astype(int).to_dict(),
+        "split_strategy": split_strategy,
+        "per_source_split": source_split_counts,
+        "quality": dataset_quality_summary(merged),
     }
     return _write_db_and_exports(combined, data_dir=data_dir, stats_base=stats_base, export_csv=export_csv)
 
@@ -247,6 +282,7 @@ def build_dataset(
         )
     clean["source_id"] = "single_csv"
     clean["source_file"] = source_csv.name
+    clean["text_fingerprint"] = clean["text_clean"].map(text_fingerprint)
 
     combined = _stratified_splits(
         clean,
@@ -269,6 +305,8 @@ def build_dataset(
             "test": int((combined["split_name"] == "test").sum()),
         },
         "label_counts": clean["label_raw"].value_counts().astype(int).to_dict(),
+        "split_strategy": "label",
+        "quality": dataset_quality_summary(clean),
     }
     return _write_db_and_exports(combined, data_dir=data_dir, stats_base=stats_base, export_csv=export_csv)
 
@@ -281,13 +319,13 @@ def load_all_samples(data_dir: Path | None = None) -> pd.DataFrame:
     with _connect(path) as conn:
         cur = conn.execute(
             """
-            SELECT text_raw, label_raw, text_clean, split_name, source_id, source_file
+            SELECT text_raw, label_raw, text_clean, text_fingerprint, split_name, source_id, source_file
             FROM samples ORDER BY id
             """
         )
         return pd.DataFrame(
             cur.fetchall(),
-            columns=["text_raw", "label_raw", "text_clean", "split_name", "source_id", "source_file"],
+            columns=["text_raw", "label_raw", "text_clean", "text_fingerprint", "split_name", "source_id", "source_file"],
         )
 
 
@@ -298,6 +336,10 @@ def needs_rebuild(data_dir: Path | None = None) -> bool:
     data_dir = data_dir or config.DATA_DIR
     db = db_path(data_dir)
     if not db.exists():
+        return True
+    with _connect(db) as conn:
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(samples)")}
+    if "text_fingerprint" not in columns:
         return True
     db_mtime = db.stat().st_mtime
     stats = dataset_stats(data_dir)

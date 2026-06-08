@@ -9,12 +9,15 @@ from typing import Any
 import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.metrics import (
+    accuracy_score,
+    brier_score_loss,
     ConfusionMatrixDisplay,
     auc,
     classification_report,
     confusion_matrix,
     f1_score,
     fbeta_score,
+    matthews_corrcoef,
     precision_recall_curve,
     precision_score,
     recall_score,
@@ -28,17 +31,57 @@ def f2_score(y_true, y_pred):
 
 
 def evaluate_binary(y_true, y_pred, y_score=None) -> dict[str, Any]:
+    cm = confusion_matrix(y_true, y_pred, labels=[0, 1])
+    tn, fp, fn, tp = cm.ravel()
     out: dict[str, Any] = {
+        "accuracy": float(accuracy_score(y_true, y_pred)),
         "f1": float(f1_score(y_true, y_pred, zero_division=0)),
         "f2": float(f2_score(y_true, y_pred)),
         "precision": float(precision_score(y_true, y_pred, zero_division=0)),
         "recall": float(recall_score(y_true, y_pred, zero_division=0)),
+        "specificity": float(tn / (tn + fp)) if tn + fp else 0.0,
+        "mcc": float(matthews_corrcoef(y_true, y_pred)),
     }
     if y_score is not None:
-        out["roc_auc"] = float(roc_auc_score(y_true, y_score))
+        if len(np.unique(y_true)) == 2:
+            out["roc_auc"] = float(roc_auc_score(y_true, y_score))
         prec, rec, thr = precision_recall_curve(y_true, y_score)
         out["pr_auc"] = float(auc(rec, prec))
+        out["brier"] = float(brier_score_loss(y_true, y_score))
     return out
+
+
+def bootstrap_confidence_intervals(
+    y_true,
+    y_pred,
+    y_score,
+    *,
+    n_bootstrap: int = 400,
+    random_state: int = 42,
+) -> dict[str, dict[str, float]]:
+    """Percentile 95% confidence intervals for the main test metrics."""
+    y_true = np.asarray(y_true)
+    y_pred = np.asarray(y_pred)
+    y_score = np.asarray(y_score, dtype=float)
+    if len(y_true) < 2:
+        return {}
+    rng = np.random.default_rng(random_state)
+    values: dict[str, list[float]] = {}
+    for _ in range(n_bootstrap):
+        idx = rng.integers(0, len(y_true), len(y_true))
+        if np.unique(y_true[idx]).size < 2:
+            continue
+        metrics = evaluate_binary(y_true[idx], y_pred[idx], y_score[idx])
+        for name, value in metrics.items():
+            values.setdefault(name, []).append(float(value))
+    return {
+        name: {
+            "lower": float(np.quantile(samples, 0.025)),
+            "upper": float(np.quantile(samples, 0.975)),
+        }
+        for name, samples in values.items()
+        if samples
+    }
 
 
 def plot_confusion(y_true, y_pred, out_path: Path, title: str = "Confusion matrix") -> None:
@@ -150,41 +193,43 @@ def derive_risk_thresholds(
     *,
     low_default: float = 0.35,
     high_default: float = 0.70,
-    neg_quantile: float = 0.92,
-    pos_quantile: float = 0.12,
+    low_negative_recall_target: float = 0.90,
+    high_precision_target: float = 0.80,
 ) -> dict[str, float]:
-    """Derive low/medium/high cutoffs from validation scores (class-conditional quantiles).
-
-    ``low``: upper bound for 低风险 — most validation negatives fall below this.
-    ``high``: lower bound for 高风险 — most validation positives fall above this.
-    """
+    """Choose interpretable low/high cutoffs from validation operating targets."""
     y = np.asarray(y_true)
     p = np.asarray(y_score, dtype=float)
-    neg = p[y == 0]
-    pos = p[y == 1]
-
     thr_f2 = best_threshold_fbeta(y, p, beta=2.0)
-
-    if len(neg) >= 10:
-        low = float(np.quantile(neg, neg_quantile))
-        low = float(np.clip(low, 0.28, low_default))
-    else:
-        low = float(low_default)
-
-    if len(pos) >= 10:
-        high = float(np.quantile(pos, pos_quantile))
-        high = float(np.clip(high, high_default, 0.88))
-    else:
-        high = float(high_default)
-
-    if low >= high - 0.08:
+    candidates = np.unique(p)
+    low = float(low_default)
+    for threshold in candidates:
+        predicted_negative = p < threshold
+        if predicted_negative.sum() == 0:
+            continue
+        negative_precision = float((y[predicted_negative] == 0).mean())
+        if negative_precision >= low_negative_recall_target:
+            low = float(threshold)
+    high = float(high_default)
+    for threshold in candidates:
+        predicted_positive = p >= threshold
+        if predicted_positive.sum() == 0:
+            continue
+        precision = float((y[predicted_positive] == 1).mean())
+        if precision >= high_precision_target:
+            high = float(threshold)
+            break
+    low = float(np.clip(low, 0.15, 0.55))
+    high = float(np.clip(high, 0.55, 0.90))
+    if low >= high:
         low, high = float(low_default), float(high_default)
 
     return {
         "low": low,
         "high": high,
         "operating_threshold": thr_f2,
-        "derived_from": "class_conditional_quantiles",
+        "derived_from": "validation_operating_targets",
+        "low_target": f"negative_predictive_value>={low_negative_recall_target:.2f}",
+        "high_target": f"precision>={high_precision_target:.2f}",
     }
 
 

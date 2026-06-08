@@ -1,12 +1,29 @@
 .venv/
-data/
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+.pytest_cache/
 .ipynb_checkpoints/
 .idea/
 .vscode/
 *.log
-*.csv
 *.xlsx
+
+# CSV files outside data/ are usually generated exports.
+*.csv
+!data/
+!data/**/*.csv
+!artifacts/ablation_results.csv
+!artifacts/error_cases_test.csv
+!artifacts/experiment_results.csv
+
+# Keep only the curated/reproducible dataset files.
+data/*
+!data/.gitkeep
+!data/sources.json
+!data/depression.db
+!data/dataset_stats.json
+!data/depression_dataset_reddit_cleaned.csv
+!data/depression-classification-text-dataset.csv
+!data/train.csv
+!data/val.csv
+!data/test.csv

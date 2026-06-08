@@ -86,13 +86,16 @@ def depression_probability(
     platt: Any | None = None,
 ) -> float:
     clean = preprocess_text_en(text)
-    Xs = vectorize_single(vectorizer, scaler, clean)
-    if hasattr(model, "predict_proba"):
-        p = float(model.predict_proba(Xs)[0, 1])
+    if vectorizer is None or scaler is None:
+        p = float(model.predict_proba([clean])[0, 1])
     else:
-        scores = model.decision_function(Xs)
-        s = float(scores[0])
-        p = float(1.0 / (1.0 + np.exp(-s)))
+        Xs = vectorize_single(vectorizer, scaler, clean)
+        if hasattr(model, "predict_proba"):
+            p = float(model.predict_proba(Xs)[0, 1])
+        else:
+            scores = model.decision_function(Xs)
+            s = float(scores[0])
+            p = float(1.0 / (1.0 + np.exp(-s)))
     if platt is not None:
         p = apply_platt(platt, p)
     return p
@@ -250,9 +253,14 @@ def assess_text(
 
 
 def load_artifacts(artifacts_dir: Path):
-    model = joblib.load(artifacts_dir / "depression_model.pkl")
-    vectorizer = joblib.load(artifacts_dir / "tfidf.pkl")
-    scaler = joblib.load(artifacts_dir / "scaler.pkl")
+    pipeline_path = artifacts_dir / "model_pipeline.pkl"
+    if pipeline_path.exists():
+        model = joblib.load(pipeline_path)
+        vectorizer = scaler = None
+    else:
+        model = joblib.load(artifacts_dir / "depression_model.pkl")
+        vectorizer = joblib.load(artifacts_dir / "tfidf.pkl")
+        scaler = joblib.load(artifacts_dir / "scaler.pkl")
     thresholds = load_risk_thresholds(artifacts_dir)
     platt = load_platt_optional(artifacts_dir)
     return model, vectorizer, scaler, thresholds, platt
