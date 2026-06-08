@@ -22,15 +22,15 @@
 python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -U pip
-pip install -e .
+pip install -e ".[train]"
 ```
 
 Windows 将 `source .venv/bin/activate` 换为 `.venv\Scripts\activate`。
 
-或：
+完整实验（MiniLM + Notebook）：
 
 ```bash
-pip install -r requirements.txt
+pip install -e ".[full]"
 ```
 
 并把 `src` 加入 `PYTHONPATH`（脚本已自动处理）。
@@ -86,17 +86,32 @@ python scripts/build_dataset.py --source data/depression_dataset_reddit_cleaned.
 
 ## 3. 训练
 
+快速训练（默认，只运行适合普通笔记本电脑的核心模型）：
+
 ```bash
-python scripts/run_train.py
+python scripts/run_train.py --experiment quick
+```
+
+完整课程实验（模型比较、消融、MiniLM、跨数据源评估）：
+
+```bash
+python scripts/run_train.py --experiment full
 ```
 
 可选参数：
 
-- `--slow`：对部分模型启用 `GridSearchCV`（更慢）。
+- `--experiment {quick,full}`：轻量演示或完整实验。
+- `--split-strategy {source_label,label}`：重建数据时的分层策略。
+- `--seed`：统一控制数据切分和模型随机性。
 - `--no-oversample`：关闭训练集随机过采样。
 - `--data-dir`、`--artifacts-dir`：自定义路径。
 
-训练结束后查看 `artifacts/metrics.json` 与各类 `*.png` 曲线图。
+训练结束后查看：
+
+- `metrics.json`：验证集、同域测试、跨域测试和校准结果。
+- `model_metadata.json`：代码版本、依赖、随机种子、数据指纹和训练时间。
+- `ablation_results.csv`：完整实验的特征消融。
+- `error_cases_test.csv`：高置信度误判样本，供课程报告错误分析。
 
 ## 4. Jupyter
 
@@ -110,7 +125,7 @@ jupyter notebook notebooks/depression_detection.ipynb
 python scripts/run_gui.py
 ```
 
-界面会校验**最短字符数**与**是否主要为英文**；结果区除模型概率外，会展示 **EMNLP’17 `user_selection` 词典** 的命中摘要（解释用）。若训练阶段拟合了 **Platt 概率校准**，推理概率为校准后分数（见 `artifacts/platt_calibrator.pkl`）。
+界面会校验**最短字符数**与**是否主要为英文**；结果展示的是“模型阳性分数”，不是患病概率或诊断。EMNLP’17 词典命中只作为文本证据展示，不应表述为模型的因果解释。
 
 ### 5.1 批量推理（CSV）
 
@@ -134,9 +149,13 @@ pytest
 - 模型：逻辑回归、`LinearSVC`（`CalibratedClassifierCV` 概率）、随机森林、**XGBoost**（若安装失败则自动跳过）。
 - 大规模训练集：默认对 **训练子集** 做分层抽样至 `MAX_TRAIN_ROWS`（见 `config.py`），验证集与官方测试集仍全量用于评估，以控制笔记本/普通电脑的内存占用。
 - 不平衡：`RandomOverSampler` + 多数模型的 `class_weight`。
-- 验证集上按 **F2**（偏重召回）搜索分类阈值，并写入 `artifacts/risk_thresholds.json` 供 GUI 三档风险展示；可选在验证集上拟合 **Platt 校准**（`probability_calibrate.py`），并输出可靠性图 `artifacts/calibration_reliability_test.png`。
+- 验证集被拆成互不重叠的校准子集和阈值/模型选择子集；Platt 校准与 F2 阈值不会拟合在同一批样本上。
+- 完整实验按 `0.7 × 同域验证 F2 + 0.3 × 跨域 F2` 选择有跨域结果的模型。
+- 报告 Accuracy、Precision、Recall、Specificity、F1、F2、MCC、ROC-AUC、PR-AUC、Brier score 与 bootstrap 95% 区间。
 - 数据说明与伦理提示会写入 `artifacts/dataset_meta.json` 的 `label_disclaimer` 字段。
 
 ## 7. 许可与伦理
 
 请遵守各数据集作者在 Kaggle 页面上的使用条款；课堂展示需写明数据来源、局限性与伦理风险（误判、污名化、隐私等）。
+
+课程论文建议结构见 [`docs/course_report_outline.md`](docs/course_report_outline.md)。

@@ -8,6 +8,8 @@ import numpy as np
 import pandas as pd
 from scipy.sparse import csr_matrix, hstack as sparse_hstack
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.pipeline import FeatureUnion
+from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.preprocessing import StandardScaler
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
@@ -28,6 +30,13 @@ STAT_FEATURE_ORDER: tuple[str, ...] = (
     "emnlp_subreddit_word_hits",
     "emnlp_subreddit_r_hits",
 )
+
+FEATURE_VARIANTS: dict[str, tuple[str, ...]] = {
+    "tfidf_only": (),
+    "tfidf_stats": ("char_len", "word_count", "avg_word_len"),
+    "tfidf_stats_vader": ("char_len", "word_count", "avg_word_len", "sentiment_compound"),
+    "tfidf_stats_vader_emnlp": STAT_FEATURE_ORDER,
+}
 
 
 def compound_sentiment(text: str) -> float:
@@ -67,10 +76,44 @@ def fit_tfidf(corpus: Iterable[str]) -> TfidfVectorizer:
     return vec
 
 
-def _stats_matrix(texts: Iterable[str]) -> csr_matrix:
-    rows = [[extract_stat_features(t)[k] for k in STAT_FEATURE_ORDER] for t in texts]
+def _stats_matrix(texts: Iterable[str], feature_names: tuple[str, ...] = STAT_FEATURE_ORDER) -> csr_matrix:
+    rows = [[extract_stat_features(t)[k] for k in feature_names] for t in texts]
     arr = np.asarray(rows, dtype=float)
     return csr_matrix(arr)
+
+
+class StatFeatureTransformer(BaseEstimator, TransformerMixin):
+    """Sklearn-compatible sparse transformer used by the unified experiment pipeline."""
+
+    def __init__(self, feature_names: tuple[str, ...] = STAT_FEATURE_ORDER):
+        self.feature_names = feature_names
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X):
+        return _stats_matrix(X, tuple(self.feature_names))
+
+
+def build_feature_union(variant: str = "tfidf_stats_vader_emnlp") -> FeatureUnion:
+    if variant not in FEATURE_VARIANTS:
+        raise ValueError(f"Unknown feature variant: {variant}")
+    transformers = [
+        (
+            "tfidf",
+            TfidfVectorizer(
+                max_features=config.TFIDF_MAX_FEATURES,
+                ngram_range=config.TFIDF_NGRAM_RANGE,
+                min_df=config.TFIDF_MIN_DF,
+                max_df=config.TFIDF_MAX_DF,
+                sublinear_tf=True,
+            ),
+        )
+    ]
+    stat_names = FEATURE_VARIANTS[variant]
+    if stat_names:
+        transformers.append(("stats", StatFeatureTransformer(stat_names)))
+    return FeatureUnion(transformers)
 
 
 def vectorize_text_stats(

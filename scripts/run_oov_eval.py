@@ -22,6 +22,7 @@ def main() -> None:
     )
     parser.add_argument("--data-dir", type=Path, default=root / "data")
     parser.add_argument("--artifacts-dir", type=Path, default=root / "artifacts")
+    parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
         "--no-embeddings",
         action="store_true",
@@ -33,6 +34,7 @@ def main() -> None:
         data_dir=args.data_dir,
         artifacts_dir=args.artifacts_dir,
         with_embeddings=not args.no_embeddings,
+        random_state=args.seed,
     )
     print("OOV evaluation finished.")
     print(f"Wrote {args.artifacts_dir / 'oov_metrics.json'}")

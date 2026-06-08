@@ -5,6 +5,7 @@ import sys
 import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox, scrolledtext
+import json
 
 
 def _ensure_src_on_path() -> Path:
@@ -54,6 +55,12 @@ class DepressionDetectorGUI:
         from depression_ml.risk import load_artifacts
 
         self.model, self.vectorizer, self.scaler, self.thresholds, self.platt = load_artifacts(artifacts_dir)
+        metadata_path = artifacts_dir / "model_metadata.json"
+        self.metadata = (
+            json.loads(metadata_path.read_text(encoding="utf-8"))
+            if metadata_path.exists()
+            else {}
+        )
 
         result_frame = tk.LabelFrame(
             self.root,
@@ -104,6 +111,22 @@ class DepressionDetectorGUI:
             fg=text_fg,
         )
         desc.pack(pady=4)
+
+        version = self.metadata.get("model_version", "legacy-artifact")
+        scope = tk.Label(
+            body,
+            text=(
+                f"Model version: {version} | Scope: English social-media text only.\n"
+                "The score is not a diagnosis or a clinical probability. "
+                "For immediate self-harm danger, contact local emergency services or a crisis hotline."
+            ),
+            font=_font_body(),
+            wraplength=700,
+            justify=tk.LEFT,
+            bg=win_bg,
+            fg="#8B0000",
+        )
+        scope.pack(pady=4)
 
         text_label = tk.Label(body, text="Paste text to analyse:", font=_font_body(), bg=win_bg, fg=text_fg)
         text_label.pack(anchor=tk.W, padx=16, pady=(16, 4))
@@ -205,9 +228,7 @@ class DepressionDetectorGUI:
             advice = "Strong distress cues in text. If you or someone else may self-harm, contact local emergency services or a crisis hotline immediately."
 
         self.risk_label.config(text=f"Risk tier: {tier}", fg=color)
-        self.prob_label.config(
-            text=f"Model score (depression-positive, Platt-calibrated if trained): {prob:.2%}"
-        )
+        self.prob_label.config(text=f"Model-positive score (not a clinical probability): {prob:.2%}")
         self.advice_label.config(text=advice, fg=color)
 
         def _fmt(name: str, xs: list) -> str:
@@ -217,7 +238,8 @@ class DepressionDetectorGUI:
 
         self.lex_label.config(
             text=(
-                "Lexicon (Georgetown emnlp17-depression / user_selection — explainability only)\n"
+                "Text evidence (Georgetown emnlp17-depression / user_selection)\n"
+                "Lexicon hits are descriptive cues, not causal explanations of the model decision.\n"
                 f"Counts — MH={int(det['emnlp_mh_hits'])}, pos_diag≈{int(det['emnlp_pos_diag'])}, neg_diag≈{int(det['emnlp_neg_diag'])}, "
                 f"sub_word={int(det['emnlp_subreddit_word_hits'])}, sub_r={int(det['emnlp_subreddit_r_hits'])}\n"
                 f"{_fmt('MH terms', det['mh_matches'])}\n"

@@ -42,13 +42,21 @@ def main() -> None:
     y_va = binary_labels(va, config.POSITIVE_LABELS)
 
     artifacts = args.artifacts_dir
-    vectorizer = joblib.load(artifacts / "tfidf.pkl")
-    scaler = joblib.load(artifacts / "scaler.pkl")
-    model = joblib.load(artifacts / "depression_model.pkl")
+    pipeline_path = artifacts / "model_pipeline.pkl"
+    if pipeline_path.exists():
+        model = joblib.load(pipeline_path)
+        vectorizer = scaler = None
+    else:
+        vectorizer = joblib.load(artifacts / "tfidf.pkl")
+        scaler = joblib.load(artifacts / "scaler.pkl")
+        model = joblib.load(artifacts / "depression_model.pkl")
     platt = load_platt_optional(artifacts)
 
-    X_va = vectorize_text_stats(vectorizer, scaler, va["text_clean"], fit_scaler=False)
-    p_va = model.predict_proba(X_va)[:, 1]
+    if vectorizer is None:
+        p_va = model.predict_proba(va["text_clean"])[:, 1]
+    else:
+        X_va = vectorize_text_stats(vectorizer, scaler, va["text_clean"], fit_scaler=False)
+        p_va = model.predict_proba(X_va)[:, 1]
     if platt is not None:
         p_va = np.array([apply_platt(platt, float(x)) for x in p_va])
 
@@ -63,6 +71,13 @@ def main() -> None:
 
     out = artifacts / "risk_thresholds.json"
     dump_json(risk, out)
+    metrics_path = artifacts / "metrics.json"
+    if metrics_path.exists():
+        import json
+
+        metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+        metrics["risk_thresholds"] = risk
+        dump_json(metrics, metrics_path)
     print(f"Wrote {out}")
     print(risk)
 

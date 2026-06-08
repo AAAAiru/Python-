@@ -8,6 +8,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 from sklearn.calibration import CalibratedClassifierCV
+from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import LinearSVC
@@ -27,24 +28,57 @@ def _prepare_frame(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def _fit_tfidf_linear_svc(
+def _candidate_models(random_state: int) -> dict[str, Any]:
+    models: dict[str, Any] = {
+        "logistic_regression": LogisticRegression(
+            max_iter=2000,
+            class_weight="balanced",
+            random_state=random_state,
+            solver="saga",
+        ),
+        "linear_svc": CalibratedClassifierCV(
+            LinearSVC(class_weight="balanced", dual="auto", max_iter=20000, random_state=random_state),
+            method="sigmoid",
+            cv=3,
+        ),
+    }
+    try:
+        from xgboost import XGBClassifier
+
+        models["xgboost"] = XGBClassifier(
+            n_estimators=200,
+            max_depth=5,
+            learning_rate=0.05,
+            subsample=0.9,
+            colsample_bytree=0.9,
+            reg_lambda=1.0,
+            random_state=random_state,
+            tree_method="hist",
+            eval_metric="logloss",
+        )
+    except Exception:
+        pass
+    return models
+
+
+def _fit_tfidf_candidate(
     tr: pd.DataFrame,
     va: pd.DataFrame,
     y_tr: np.ndarray,
     y_va: np.ndarray,
+    model: Any,
 ) -> tuple[Any, Any, Any, float, dict[str, float]]:
     vectorizer = fit_tfidf(tr["text_clean"])
     scaler = StandardScaler(with_mean=False)
     X_tr = vectorize_text_stats(vectorizer, scaler, tr["text_clean"], fit_scaler=True)
     X_va = vectorize_text_stats(vectorizer, scaler, va["text_clean"], fit_scaler=False)
 
-    model = CalibratedClassifierCV(
-        LinearSVC(class_weight="balanced", dual="auto", max_iter=20000, random_state=config.RANDOM_STATE),
-        method="sigmoid",
-        cv=3,
-    )
     model.fit(X_tr, y_tr)
-    p_va = model.predict_proba(X_va)[:, 1]
+    if hasattr(model, "predict_proba"):
+        p_va = model.predict_proba(X_va)[:, 1]
+    else:
+        p_va = model.decision_function(X_va)
+        p_va = (p_va - p_va.min()) / (p_va.max() - p_va.min() + 1e-9)
     thr = best_threshold_fbeta(y_va, p_va, beta=2.0)
     pred_va = (p_va >= thr).astype(int)
     val_metrics = evaluate_binary(y_va, pred_va, p_va)
@@ -59,7 +93,11 @@ def _score_tfidf(
     threshold: float,
 ) -> tuple[np.ndarray, np.ndarray]:
     X = vectorize_text_stats(vectorizer, scaler, texts, fit_scaler=False)
-    p = model.predict_proba(X)[:, 1]
+    if hasattr(model, "predict_proba"):
+        p = model.predict_proba(X)[:, 1]
+    else:
+        p = model.decision_function(X)
+        p = (p - p.min()) / (p.max() - p.min() + 1e-9)
     return p, (p >= threshold).astype(int)
 
 
@@ -71,6 +109,7 @@ def run_oov_eval(
     test_sources: tuple[str, ...] | None = None,
     with_embeddings: bool = True,
     val_fraction: float = 0.15,
+    random_state: int | None = None,
 ) -> dict[str, Any]:
     """Train on OOV_TRAIN_SOURCES, evaluate per held-out source in OOV_TEST_SOURCES."""
     data_dir = data_dir or config.DATA_DIR
@@ -79,6 +118,7 @@ def run_oov_eval(
 
     train_sources = train_sources or config.OOV_TRAIN_SOURCES
     test_sources = test_sources or config.OOV_TEST_SOURCES
+    random_state = config.RANDOM_STATE if random_state is None else int(random_state)
 
     all_df = load_all_samples(data_dir)
     if "source_id" not in all_df.columns:
@@ -94,14 +134,19 @@ def run_oov_eval(
     tr_idx, va_idx = train_test_split(
         idx,
         test_size=val_fraction,
-        random_state=config.RANDOM_STATE,
+        random_state=random_state,
         stratify=y_pool,
     )
     tr = train_pool.iloc[tr_idx].reset_index(drop=True)
     va = train_pool.iloc[va_idx].reset_index(drop=True)
     y_tr, y_va = y_pool[tr_idx], y_pool[va_idx]
 
-    vec, scaler, tfidf_model, tfidf_thr, tfidf_val = _fit_tfidf_linear_svc(tr, va, y_tr, y_va)
+    tfidf_reports: dict[str, Any] = {}
+    fitted_candidates: dict[str, tuple[Any, Any, Any, float]] = {}
+    for name, model in _candidate_models(random_state).items():
+        vec, scaler, fitted, thr, val_metrics = _fit_tfidf_candidate(tr, va, y_tr, y_va, model)
+        tfidf_reports[name] = {"in_domain_holdout": val_metrics, "threshold": thr}
+        fitted_candidates[name] = (vec, scaler, fitted, thr)
 
     emb_clf = emb_scaler = None
     emb_thr = 0.5
@@ -109,7 +154,7 @@ def run_oov_eval(
     if with_embeddings:
         try:
             emb_clf, emb_scaler, emb_val, emb_thr = train_embedding_classifier(
-                tr["text_clean"], y_tr, va["text_clean"], y_va
+                tr["text_clean"], y_tr, va["text_clean"], y_va, random_state=random_state
             )
         except ImportError as exc:
             with_embeddings = False
@@ -125,8 +170,11 @@ def run_oov_eval(
         y_te = binary_labels(holdout, config.POSITIVE_LABELS)
         entry: dict[str, Any] = {"rows": len(holdout), "positives": int(y_te.sum())}
 
-        p_tf, pred_tf = _score_tfidf(tfidf_model, vec, scaler, holdout["text_clean"], tfidf_thr)
-        entry["tfidf_linear_svc"] = evaluate_binary(y_te, pred_tf, p_tf)
+        for name, (vec, scaler, model, thr) in fitted_candidates.items():
+            p_tf, pred_tf = _score_tfidf(model, vec, scaler, holdout["text_clean"], thr)
+            metrics = evaluate_binary(y_te, pred_tf, p_tf)
+            entry[name] = metrics
+            tfidf_reports[name].setdefault("per_holdout_source", {})[src] = metrics
 
         if with_embeddings and emb_clf is not None and emb_scaler is not None:
             p_emb = predict_embedding_proba(holdout["text_clean"], emb_clf, emb_scaler)
@@ -135,11 +183,10 @@ def run_oov_eval(
 
         per_source[src] = entry
 
-    in_domain_test = all_df[all_df["source_id"].isin(train_sources)]
-    in_domain_test = _prepare_frame(in_domain_test.reset_index(drop=True))
-    y_in = binary_labels(in_domain_test, config.POSITIVE_LABELS)
-    p_in, pred_in = _score_tfidf(tfidf_model, vec, scaler, in_domain_test["text_clean"], tfidf_thr)
-    in_domain_metrics = evaluate_binary(y_in, pred_in, p_in)
+    for name, report_part in tfidf_reports.items():
+        holdouts = report_part.get("per_holdout_source", {})
+        f2_values = [float(m["f2"]) for m in holdouts.values() if "f2" in m]
+        report_part["mean_out_of_domain_f2"] = float(np.mean(f2_values)) if f2_values else None
 
     report = {
         "protocol": "train_on_sources_test_on_others",
@@ -147,10 +194,35 @@ def run_oov_eval(
         "test_sources": list(test_sources),
         "train_pool_rows": len(train_pool),
         "val_fraction": val_fraction,
-        "in_domain_refit_val": tfidf_val,
-        "in_domain_full_pool_test_tfidf": in_domain_metrics,
+        "leakage_note": "All in-domain metrics are computed on the held-out validation split only; training rows are not reused as test rows.",
+        "tfidf_candidates": tfidf_reports,
         "embedding_val": emb_val if with_embeddings else {"skipped": True},
         "per_holdout_source": per_source,
     }
     dump_json(report, artifacts_dir / "oov_metrics.json")
+    _plot_oov_f2(report, artifacts_dir / "oov_f2_by_source.png")
     return report
+
+
+def _plot_oov_f2(report: dict[str, Any], out_path: Path) -> None:
+    import matplotlib.pyplot as plt
+
+    rows = []
+    for source, entry in report.get("per_holdout_source", {}).items():
+        for model_name, metrics in entry.items():
+            if isinstance(metrics, dict) and "f2" in metrics:
+                rows.append((source, model_name, float(metrics["f2"])))
+    if not rows:
+        return
+    labels = [f"{source}\n{model}" for source, model, _ in rows]
+    values = [value for _, _, value in rows]
+    fig, ax = plt.subplots(figsize=(max(6, len(rows) * 1.4), 4))
+    ax.bar(np.arange(len(rows)), values, color="#4C72B0")
+    ax.set_ylim(0, 1)
+    ax.set_ylabel("F2")
+    ax.set_title("Out-of-domain F2 by source and model")
+    ax.set_xticks(np.arange(len(rows)))
+    ax.set_xticklabels(labels, rotation=20, ha="right")
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=160)
+    plt.close(fig)

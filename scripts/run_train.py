@@ -18,7 +18,20 @@ def main() -> None:
     from depression_ml.train import run_training
 
     parser = argparse.ArgumentParser(description="Train depression vs non-depression models.")
-    parser.add_argument("--slow", action="store_true", help="Enable GridSearchCV on some models (slower).")
+    parser.add_argument(
+        "--experiment",
+        choices=("quick", "full"),
+        default="quick",
+        help="quick: laptop-friendly core models; full: ablation, tree models, MiniLM and OOV.",
+    )
+    parser.add_argument(
+        "--split-strategy",
+        choices=("source_label", "label"),
+        default="source_label",
+        help="Dataset split stratification strategy used when rebuilding data.",
+    )
+    parser.add_argument("--seed", type=int, default=42, help="Random seed for splits and models.")
+    parser.add_argument("--slow", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--no-oversample", action="store_true", help="Disable RandomOverSampler on training features.")
     parser.add_argument(
         "--rebuild-data",
@@ -69,7 +82,9 @@ def main() -> None:
     summary = run_training(
         data_dir=args.data_dir,
         artifacts_dir=args.artifacts_dir,
-        fast=not args.slow,
+        experiment="full" if args.slow else args.experiment,
+        split_strategy=args.split_strategy,
+        seed=args.seed,
         oversample=not args.no_oversample,
         rebuild_data=args.rebuild_data,
         auto_rebuild_data=not args.no_auto_rebuild,

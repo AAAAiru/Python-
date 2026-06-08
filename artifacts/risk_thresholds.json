@@ -1,8 +1,11 @@
 {
-  "low": 0.28,
-  "high": 0.8578520586332015,
-  "operating_threshold": 0.10725968333442507,
-  "derived_from": "class_conditional_quantiles",
-  "calibrated_on": "validation_split",
-  "probability_calibration": "platt_validation"
+  "low": 0.35,
+  "high": 0.7,
+  "operating_threshold": 0.1009311290040432,
+  "derived_from": "validation_operating_targets",
+  "low_target": "negative_predictive_value>=0.90",
+  "high_target": "precision>=0.80",
+  "calibrated_on": "validation_calibration_half",
+  "threshold_selected_on": "validation_selection_half",
+  "probability_calibration": "platt_separate_validation_half"
 }

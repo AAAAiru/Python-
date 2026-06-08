@@ -55,6 +55,48 @@
     "1": 3840,
     "0": 3807
   },
-  "built_at": "2026-05-27T00:07:46.777428+00:00",
+  "split_strategy": "source_label",
+  "per_source_split": {
+    "depression_text_clf": {
+      "test": 47,
+      "train": 150,
+      "val": 37
+    },
+    "reddit": {
+      "test": 1483,
+      "train": 4743,
+      "val": 1187
+    }
+  },
+  "quality": {
+    "rows": 7647,
+    "exact_duplicate_fingerprints": 0,
+    "near_duplicate_estimate": 29,
+    "char_length": {
+      "min": 20,
+      "median": 109.0,
+      "mean": 359.1668628220217,
+      "max": 19820
+    },
+    "per_source": {
+      "depression_text_clf": {
+        "rows": 234,
+        "label_counts": {
+          "1": 113,
+          "0": 121
+        },
+        "mean_chars": 48.60683760683761
+      },
+      "reddit": {
+        "rows": 7413,
+        "label_counts": {
+          "1": 3727,
+          "0": 3686
+        },
+        "mean_chars": 368.97005261027925
+      }
+    }
+  },
+  "built_at": "2026-06-08T02:56:12.628253+00:00",
   "label_disclaimer": "Labels reflect dataset authors / heuristics (e.g. Reddit self-report or Kaggle crowdsourcing), not clinical diagnosis. Do not use outputs for medical decisions or crisis triage."
 }

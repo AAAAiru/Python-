@@ -66,7 +66,7 @@ AUTO_REBUILD_DATA = True
 
 # --- Sentence embedding baseline (optional; requires sentence-transformers) ---
 EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
-TRAIN_EMBEDDING_BASELINE = True
+TRAIN_EMBEDDING_BASELINE = False
 EMBEDDING_BATCH_SIZE = 64
 
 # --- Ethics / documentation (written into artifacts/dataset_meta.json) ---
