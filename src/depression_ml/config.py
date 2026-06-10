@@ -58,6 +58,8 @@ RISK_STRONG_POSITIVE_MAX_PROB = 0.90
 RISK_SHORT_MAX_PROB_FOR_HIGH = 0.88  # short text cannot be 高风险 below this prob without lexicon
 RISK_HIGH_REQUIRES_LEXICON = True
 RISK_HIGH_MIN_PROB_WITHOUT_LEXICON = 0.92
+RISK_STRONG_DISTRESS_MAX_SENTIMENT = -0.25
+RISK_STRONG_DISTRESS_MIN_CUES = 2
 
 # --- Post-training probability calibration (validation Platt) ---
 USE_PLATT_CALIBRATION = True

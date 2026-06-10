@@ -123,3 +123,44 @@ def test_short_explicit_crisis_language_bypasses_short_text_cap():
     assert tier == "高风险"
     assert "explicit_crisis_language" in flags
     assert "short_text_cap_high" not in flags
+
+
+def test_multiple_persistent_distress_cues_preserve_high_tier_without_lexicon():
+    from depression_ml.risk import resolve_display_tier
+
+    text = (
+        "i feel hopeless and worthless every day nothing seems meaningful anymore "
+        "and i have completely lost interest in the things i used to enjoy"
+    )
+    tier, model_tier, flags = resolve_display_tier(
+        0.9078,
+        {"low": 0.35, "high": 0.70},
+        clean=text,
+        sentiment=-0.4546,
+        lex={"emnlp_mh_hits": 0, "emnlp_neg_diag": 0, "emnlp_pos_diag": 0},
+        raw_len=len(text),
+    )
+
+    assert model_tier == "高风险"
+    assert tier == "高风险"
+    assert "strong_distress_language" in flags
+    assert "high_tier_requires_lexicon" not in flags
+
+
+def test_single_negative_cue_does_not_disable_high_tier_guardrail():
+    from depression_ml.risk import resolve_display_tier
+
+    text = "i felt hopeless after failing one examination"
+    tier, model_tier, flags = resolve_display_tier(
+        0.80,
+        {"low": 0.35, "high": 0.70},
+        clean=text,
+        sentiment=-0.40,
+        lex={"emnlp_mh_hits": 0, "emnlp_neg_diag": 0, "emnlp_pos_diag": 0},
+        raw_len=len(text),
+    )
+
+    assert model_tier == "高风险"
+    assert tier == "中风险"
+    assert "strong_distress_language" not in flags
+    assert "short_text_cap_high" in flags or "high_tier_requires_lexicon" in flags

@@ -42,6 +42,24 @@ _CRISIS_CUE_RE = re.compile(
     re.IGNORECASE,
 )
 
+_DISTRESS_CUE_PATTERNS = (
+    re.compile(r"\b(?:hopeless|hopelessness|no hope)\b", re.IGNORECASE),
+    re.compile(r"\b(?:worthless|worthlessness|useless|a burden)\b", re.IGNORECASE),
+    re.compile(
+        r"\b(?:lost|lose|losing|no)\s+(?:all\s+)?interest\b|"
+        r"\bno longer (?:enjoy|care about|interested in)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(?:nothing|life|everything)\s+(?:seems|feels|is)\s+"
+        r"(?:meaningless|pointless|empty|not meaningful)\b|"
+        r"\bnothing seems meaningful\b",
+        re.IGNORECASE,
+    ),
+    re.compile(r"\b(?:empty|numb|disconnected)\s+(?:every day|all the time|inside)?\b", re.IGNORECASE),
+    re.compile(r"\b(?:cannot|can['’]?t|struggle to)\s+(?:get out of bed|sleep|concentrate|function)\b", re.IGNORECASE),
+)
+
 
 @dataclass
 class AssessmentResult:
@@ -67,6 +85,7 @@ class AssessmentResult:
             "high_tier_requires_lexicon": "未检出明显心理/负向词典命中，已限制为高中档",
             "short_or_sparse_text": "文本过短或词数过少，结果仅供参考",
             "explicit_crisis_language": "检测到明确的自伤或自杀相关表达，已优先显示安全求助提示",
+            "strong_distress_language": "模型高分且检测到多类持续性困扰表达，保留高风险档位",
         }
         parts = [notes.get(f, f) for f in self.flags]
         return "；".join(parts) if parts else ""
@@ -139,6 +158,10 @@ def _has_explicit_crisis_language(clean: str) -> bool:
     return bool(_CRISIS_CUE_RE.search(clean))
 
 
+def _distress_cue_count(clean: str) -> int:
+    return sum(bool(pattern.search(clean)) for pattern in _DISTRESS_CUE_PATTERNS)
+
+
 def _lex_hits(lex: dict[str, Any]) -> tuple[float, float, float]:
     return (
         float(lex.get("emnlp_mh_hits", 0)),
@@ -208,6 +231,14 @@ def resolve_display_tier(
         flags.append("explicit_crisis_language")
         return "高风险", model_tier, flags
 
+    strong_distress = (
+        model_tier == "高风险"
+        and sentiment <= config.RISK_STRONG_DISTRESS_MAX_SENTIMENT
+        and _distress_cue_count(clean) >= config.RISK_STRONG_DISTRESS_MIN_CUES
+    )
+    if strong_distress:
+        flags.append("strong_distress_language")
+
     if _is_clearly_positive_benign(prob, sentiment, lex, clean):
         if tier != "低风险":
             flags.append("positive_context_override")
@@ -221,7 +252,7 @@ def resolve_display_tier(
             tier = "低风险"
             flags.append("short_positive_downgrade")
 
-    if config.RISK_HIGH_REQUIRES_LEXICON and tier == "高风险":
+    if config.RISK_HIGH_REQUIRES_LEXICON and tier == "高风险" and not strong_distress:
         if mh < 1 and neg < 1 and prob < config.RISK_HIGH_MIN_PROB_WITHOUT_LEXICON:
             tier = "中风险"
             flags.append("high_tier_requires_lexicon")
