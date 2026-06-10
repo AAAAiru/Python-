@@ -154,14 +154,19 @@ def _is_clearly_positive_benign(
     clean: str,
 ) -> bool:
     mh, neg, pos = _lex_hits(lex)
-    if prob >= config.RISK_OVERRIDE_MAX_PROB:
-        return False
     if mh >= 1 or neg >= 1:
+        return False
+    explicit_positive = pos >= 1 or _has_positive_cue_words(clean)
+    strong_positive = (
+        explicit_positive
+        and sentiment >= config.RISK_STRONG_POSITIVE_MIN_SENTIMENT
+        and prob < config.RISK_STRONG_POSITIVE_MAX_PROB
+    )
+    if prob >= config.RISK_OVERRIDE_MAX_PROB and not strong_positive:
         return False
     positive_lang = (
         sentiment >= config.RISK_OVERRIDE_MIN_SENTIMENT
-        or pos >= 1
-        or _has_positive_cue_words(clean)
+        or explicit_positive
     )
     return positive_lang
 

@@ -49,8 +49,12 @@ MIN_LATIN_LETTER_RATIO = 0.82  # see preprocess.looks_english
 GUI_LEXICON_PREVIEW = 5  # max phrases per category in the GUI
 
 # Post-model rules (short / positive snippets — reduce false medium/high)
-RISK_OVERRIDE_MAX_PROB = 0.32
-RISK_OVERRIDE_MIN_SENTIMENT = 0.12
+# Allow strongly positive, lexicon-clean text in the lower part of the medium
+# band to be corrected, while requiring clear rather than marginal positivity.
+RISK_OVERRIDE_MAX_PROB = 0.45
+RISK_OVERRIDE_MIN_SENTIMENT = 0.50
+RISK_STRONG_POSITIVE_MIN_SENTIMENT = 0.75
+RISK_STRONG_POSITIVE_MAX_PROB = 0.90
 RISK_SHORT_MAX_PROB_FOR_HIGH = 0.88  # short text cannot be 高风险 below this prob without lexicon
 RISK_HIGH_REQUIRES_LEXICON = True
 RISK_HIGH_MIN_PROB_WITHOUT_LEXICON = 0.92

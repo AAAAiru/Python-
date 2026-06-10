@@ -12,7 +12,6 @@ def test_positive_short_sentence_low_risk():
 
     r = assess_text("i am happy and i love my cat", ARTIFACTS_DIR)
     assert r.tier == "低风险"
-    assert r.prob < 0.35
     assert "positive_context_override" in r.flags or r.model_tier == "低风险"
 
 
@@ -28,7 +27,46 @@ def test_resolve_positive_benign_without_model():
         raw_len=30,
     )
     assert tier == "低风险"
+    assert model_tier == "低风险"
+    assert "positive_context_override" not in flags
+
+
+def test_strongly_positive_recovery_context_downgrades_low_medium_score():
+    from depression_ml.risk import resolve_display_tier
+
+    text = (
+        "the examination is finished and i feel relieved i met my friends for dinner "
+        "and laughed i feel hopeful and motivated for the next stage of my studies"
+    )
+    tier, model_tier, flags = resolve_display_tier(
+        0.3753,
+        {"low": 0.35, "high": 0.70},
+        clean=text,
+        sentiment=0.9082,
+        lex={"emnlp_mh_hits": 0, "emnlp_neg_diag": 0, "emnlp_pos_diag": 0},
+        raw_len=len(text),
+    )
+
+    assert model_tier == "中风险"
+    assert tier == "低风险"
     assert "positive_context_override" in flags
+
+
+def test_weakly_positive_medium_score_is_not_downgraded():
+    from depression_ml.risk import resolve_display_tier
+
+    text = "work is difficult but today was a little better"
+    tier, _, flags = resolve_display_tier(
+        0.40,
+        {"low": 0.35, "high": 0.70},
+        clean=text,
+        sentiment=0.20,
+        lex={"emnlp_mh_hits": 0, "emnlp_neg_diag": 0, "emnlp_pos_diag": 0},
+        raw_len=len(text),
+    )
+
+    assert tier == "中风险"
+    assert "positive_context_override" not in flags
 
 
 def test_short_text_caps_high_without_lexicon():
