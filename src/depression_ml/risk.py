@@ -24,6 +24,24 @@ _POSITIVE_CUE_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Explicit first-person crisis language needs a safety response even when the
+# older EMNLP lexicon does not contain the wording.
+_CRISIS_CUE_RE = re.compile(
+    r"\b(?:"
+    r"(?:kill|hurt|harm)\s+myself|"
+    r"end\s+my\s+(?:life|existence)|"
+    r"take\s+my\s+own\s+life|"
+    r"(?:i\s+)?(?:want|wish|plan|intend|think|thinking|thought|thoughts)\s+"
+    r"(?:about\s+|of\s+|to\s+)?(?:die|dying|suicide|killing\s+myself|hurting\s+myself|harming\s+myself)|"
+    r"i\s+(?:do\s+not|don['’]?t)\s+want\s+to\s+(?:live|be\s+alive|continue)|"
+    r"(?:i\s+)?(?:have|feel\s+there\s+is)\s+no\s+reason\s+to\s+(?:live|continue)|"
+    r"i(?:'m|\s+am)\s+(?:better\s+off\s+dead|suicidal)|"
+    r"i\s+(?:want|wish)\s+i\s+(?:would\s+not|wouldn['’]?t|did\s+not|didn['’]?t)\s+wake\s+up|"
+    r"self[\s-]?harm|suicidal"
+    r")\b",
+    re.IGNORECASE,
+)
+
 
 @dataclass
 class AssessmentResult:
@@ -48,6 +66,7 @@ class AssessmentResult:
             "short_positive_downgrade": "短文本且语境积极，模型分数参考性有限",
             "high_tier_requires_lexicon": "未检出明显心理/负向词典命中，已限制为高中档",
             "short_or_sparse_text": "文本过短或词数过少，结果仅供参考",
+            "explicit_crisis_language": "检测到明确的自伤或自杀相关表达，已优先显示安全求助提示",
         }
         parts = [notes.get(f, f) for f in self.flags]
         return "；".join(parts) if parts else ""
@@ -116,6 +135,10 @@ def _has_positive_cue_words(clean: str) -> bool:
     return bool(_POSITIVE_CUE_RE.search(clean))
 
 
+def _has_explicit_crisis_language(clean: str) -> bool:
+    return bool(_CRISIS_CUE_RE.search(clean))
+
+
 def _lex_hits(lex: dict[str, Any]) -> tuple[float, float, float]:
     return (
         float(lex.get("emnlp_mh_hits", 0)),
@@ -175,6 +198,10 @@ def resolve_display_tier(
     short_or_sparse = raw_len < config.MIN_TEXT_CHARS_SOFT or word_count < config.MIN_WORDS_FOR_HIGH_CONF
     if short_or_sparse:
         flags.append("short_or_sparse_text")
+
+    if _has_explicit_crisis_language(clean):
+        flags.append("explicit_crisis_language")
+        return "高风险", model_tier, flags
 
     if _is_clearly_positive_benign(prob, sentiment, lex, clean):
         if tier != "低风险":

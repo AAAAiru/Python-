@@ -44,3 +44,44 @@ def test_short_text_caps_high_without_lexicon():
     )
     assert tier != "高风险"
     assert "short_text_cap_high" in flags or "short_or_sparse_text" in flags
+
+
+def test_explicit_self_harm_language_is_not_downgraded_by_missing_lexicon():
+    from depression_ml.risk import resolve_display_tier
+
+    text = (
+        "i have been feeling hopeless for a long time and recently i have started "
+        "thinking that there is no reason to continue sometimes i think about "
+        "hurting myself and i need immediate support"
+    )
+    tier, model_tier, flags = resolve_display_tier(
+        0.9078,
+        {"low": 0.35, "high": 0.70},
+        clean=text,
+        sentiment=-0.64,
+        lex={"emnlp_mh_hits": 0, "emnlp_neg_diag": 0, "emnlp_pos_diag": 0},
+        raw_len=len(text),
+    )
+
+    assert model_tier == "高风险"
+    assert tier == "高风险"
+    assert "explicit_crisis_language" in flags
+    assert "high_tier_requires_lexicon" not in flags
+
+
+def test_short_explicit_crisis_language_bypasses_short_text_cap():
+    from depression_ml.risk import resolve_display_tier
+
+    text = "i want to hurt myself"
+    tier, _, flags = resolve_display_tier(
+        0.75,
+        {"low": 0.35, "high": 0.70},
+        clean=text,
+        sentiment=-0.8,
+        lex={"emnlp_mh_hits": 0, "emnlp_neg_diag": 0, "emnlp_pos_diag": 0},
+        raw_len=len(text),
+    )
+
+    assert tier == "高风险"
+    assert "explicit_crisis_language" in flags
+    assert "short_text_cap_high" not in flags
