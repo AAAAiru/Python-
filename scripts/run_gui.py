@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import platform
 import sys
 import tkinter as tk
@@ -56,6 +57,14 @@ class DepressionDetectorGUI:
         from depression_ml.risk import load_artifacts
 
         self.model, self.vectorizer, self.scaler, self.thresholds, self.platt = load_artifacts(artifacts_dir)
+        metadata_path = artifacts_dir / "model_metadata.json"
+        self.model_version = "unknown"
+        if metadata_path.exists():
+            try:
+                metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+                self.model_version = str(metadata.get("model_version") or "unknown")
+            except (OSError, ValueError, TypeError):
+                pass
 
         result_frame = tk.LabelFrame(
             self.root,
@@ -134,8 +143,9 @@ class DepressionDetectorGUI:
             body,
             text=(
                 "Educational demo only — not a medical device. "
-                "Double-click 启动抑郁症筛查Demo.bat to open (once). "
-                "Then: paste text → Run assessment → 一键归零 in the Result panel for the next case."
+                "Designed for English social-media style text; outputs are not diagnoses. "
+                f"Model version: {self.model_version}. "
+                "Paste text → Run assessment → 一键归零 for the next case."
             ),
             font=_font_body(),
             wraplength=720,
@@ -244,26 +254,35 @@ class DepressionDetectorGUI:
 
         if tier == "低风险":
             color = "green"
-            advice = "No strong depression cue in this snippet. If you still feel unwell, talking to someone you trust helps."
+            advice = "Displayed text-alert tier is low. This does not rule out distress or replace professional assessment."
         elif tier == "中风险":
             color = "darkorange"
-            advice = "Some cues resemble distress language. Consider self-care and professional support if symptoms persist."
+            advice = "Some language resembles distress patterns. Consider support if these feelings persist."
         else:
             color = "red"
-            advice = "Strong distress cues in text. If you or someone else may self-harm, contact local emergency services or a crisis hotline immediately."
+            advice = "Strong distress patterns were detected in the text."
+            if "explicit_crisis_language" in result.flags:
+                advice += " Contact local emergency services or a crisis hotline immediately if anyone may self-harm."
+            else:
+                advice += " Consider timely support from a trusted person or qualified professional."
 
         if result.confidence == "低":
             advice += " (Short or sparse text — treat the score as indicative only.)"
 
         self.risk_label.config(text=f"Risk tier: {tier}", fg=color)
-        self.conf_label.config(text=f"Confidence: {result.confidence}  |  {result.word_count} words, {result.char_len} chars")
+        self.conf_label.config(
+            text=(
+                f"Input adequacy (length-based): {result.confidence}"
+                f"  |  {result.word_count} words, {result.char_len} chars"
+            )
+        )
 
         model_note = ""
         if result.model_tier != tier:
             model_note = f"  |  model-only tier was {result.model_tier}"
         self.prob_label.config(
             text=(
-                f"Score (depression-positive): {prob:.2%}"
+                f"Model-positive score (not medical probability): {prob:.2%}"
                 f"{model_note}"
                 f"  |  VADER sentiment: {result.sentiment_compound:+.2f}"
             )
@@ -280,7 +299,7 @@ class DepressionDetectorGUI:
 
         self.lex_label.config(
             text=(
-                "Lexicon (Georgetown emnlp17-depression / user_selection — explainability only)\n"
+                "Lexicon evidence (Georgetown emnlp17-depression; not a causal explanation)\n"
                 f"Counts — MH={int(det['emnlp_mh_hits'])}, pos_diag≈{int(det['emnlp_pos_diag'])}, neg_diag≈{int(det['emnlp_neg_diag'])}, "
                 f"sub_word={int(det['emnlp_subreddit_word_hits'])}, sub_r={int(det['emnlp_subreddit_r_hits'])}\n"
                 f"{_fmt('MH terms', det['mh_matches'])}\n"
